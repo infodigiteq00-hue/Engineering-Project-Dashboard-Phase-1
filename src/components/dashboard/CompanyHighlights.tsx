@@ -9,7 +9,7 @@ interface CompanyHighlightsProps {
 }
 
 type TimePeriod = '1 Day' | '1 Week' | '1 Month' | 'Custom';
-type ActiveTab = 'production' | 'documentation' | 'timeline';
+type ActiveTab = 'production' | 'documentation' | 'timeline' | 'milestone';
 type ProductionSubTab = 'key-progress' | 'all-updates';
 
 const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
@@ -20,6 +20,7 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
   const [equipmentCardUpdates, setEquipmentCardUpdates] = useState<any[]>([]);
   const [documentationUpdates, setDocumentationUpdates] = useState<any[]>([]);
   const [timelineUpdates, setTimelineUpdates] = useState<any[]>([]);
+  const [milestoneUpdates, setMilestoneUpdates] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
   const [customDateRange, setCustomDateRange] = useState({ from: '', to: '' });
@@ -78,6 +79,49 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
     // Firm Admin, Project Manager, Viewer, Editor can see all tabs
     return true;
   };
+  
+  // Fetch milestone updates - Equipment with next milestones
+  useEffect(() => {
+    const fetchMilestoneUpdates = async () => {
+      setLoading(true);
+      try {
+        // Fetch all equipment with next_milestone data
+        const equipment = await fastAPI.getAllEquipmentNearingCompletion(
+          undefined,
+          undefined,
+          userRole === 'firm_admin' ? undefined : assignedProjectIds
+        );
+        
+        // Filter equipment that has next_milestone
+        const eqArray = Array.isArray(equipment) ? equipment : [];
+        const withMilestones = eqArray.filter((eq: any) => {
+          return eq.next_milestone && eq.next_milestone.trim() !== '' && eq.next_milestone !== 'Initial Setup';
+        });
+        
+        // Sort by project name and equipment type
+        const sortedMilestones = withMilestones.sort((a: any, b: any) => {
+          const projectA = a.projects?.name || '';
+          const projectB = b.projects?.name || '';
+          if (projectA !== projectB) {
+            return projectA.localeCompare(projectB);
+          }
+          return (a.type || '').localeCompare(b.type || '');
+        });
+        
+        const filteredMilestones = filterByAssignedProjects(sortedMilestones, 'project_id');
+        setMilestoneUpdates(filteredMilestones);
+      } catch (error) {
+        console.error('❌ Error fetching milestone updates:', error);
+        setMilestoneUpdates([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (isExpanded && activeTab === 'milestone' && canSeeTab('milestone')) {
+      fetchMilestoneUpdates();
+    }
+  }, [activeTab, isExpanded, userRole, assignedProjectIds]);
   
   // Filter data by assigned projects
   const filterByAssignedProjects = (data: any[], projectIdKey: string = 'project_id') => {
@@ -518,6 +562,30 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
         } catch (error) {
           console.error('Error auto-refreshing timeline updates:', error);
         }
+      } else if (activeTab === 'milestone' && canSeeTab('milestone')) {
+        try {
+          const equipment = await fastAPI.getAllEquipmentNearingCompletion(
+            undefined,
+            undefined,
+            userRole === 'firm_admin' ? undefined : assignedProjectIds
+          );
+          const eqArray = Array.isArray(equipment) ? equipment : [];
+          const withMilestones = eqArray.filter((eq: any) => {
+            return eq.next_milestone && eq.next_milestone.trim() !== '' && eq.next_milestone !== 'Initial Setup';
+          });
+          const sortedMilestones = withMilestones.sort((a: any, b: any) => {
+            const projectA = a.projects?.name || '';
+            const projectB = b.projects?.name || '';
+            if (projectA !== projectB) {
+              return projectA.localeCompare(projectB);
+            }
+            return (a.type || '').localeCompare(b.type || '');
+          });
+          const filteredMilestones = filterByAssignedProjects(sortedMilestones, 'project_id');
+          setMilestoneUpdates(filteredMilestones);
+        } catch (error) {
+          console.error('Error auto-refreshing milestone updates:', error);
+        }
       }
     };
 
@@ -702,6 +770,18 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
                   }`}
                 >
                   Manufacturing Timeline
+                </button>
+              )}
+              {canSeeTab('milestone') && (
+                <button
+                  onClick={() => setActiveTab('milestone')}
+                  className={`px-2.5 py-1.5 xs:px-3 xs:py-2 sm:px-4 sm:py-2 md:px-5 md:py-2.5 text-[10px] xs:text-xs sm:text-sm md:text-base font-medium rounded-md sm:rounded-lg transition-colors whitespace-nowrap ${
+                    activeTab === 'milestone'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  Next Milestone & Date
                 </button>
               )}
             </div>
@@ -997,6 +1077,93 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
                                 {status}
                               </span>
                             </div>
+                          </div>
+                        );
+                      })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Next Milestone & Date */}
+                {activeTab === 'milestone' && (
+                  <div>
+                    {milestoneUpdates.length === 0 ? (
+                      <div className="text-center py-6 sm:py-8 md:py-10 text-gray-500">
+                        <p className="text-xs sm:text-sm md:text-base">No equipment with next milestones found.</p>
+                      </div>
+                    ) : (
+                      <div className="h-[280px] xs:h-[320px] sm:h-[360px] md:h-[400px] overflow-y-auto space-y-2 sm:space-y-3 md:space-y-4 pr-1 sm:pr-2 company-highlights-scrollbar">
+                        {milestoneUpdates.map((eq: any) => {
+                        return (
+                          <div
+                            key={eq.id}
+                            onClick={() => {
+                              if (eq.project_id && onSelectProject) {
+                                onSelectProject(eq.project_id, 'equipment');
+                              }
+                            }}
+                            className={`p-2.5 sm:p-3 md:p-4 bg-gray-50 rounded-md sm:rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all ${
+                              eq.project_id ? 'cursor-pointer' : ''
+                            }`}
+                          >
+                            <div className="flex items-start justify-between mb-2 sm:mb-3">
+                              <div className="flex-1 min-w-0 pr-2">
+                                <h3 className="text-xs xs:text-sm sm:text-base md:text-lg font-semibold text-gray-900 mb-0.5 sm:mb-1 truncate">
+                                  {eq.type || eq.name} {eq.tag_number || ''}
+                                </h3>
+                                <p className="text-[10px] xs:text-xs sm:text-sm md:text-base text-gray-600 truncate mb-1 sm:mb-1.5">
+                                  {eq.projects?.name || 'Unknown Project'}
+                                </p>
+                                <div className="mt-1.5 sm:mt-2">
+                                  <p className="text-[10px] xs:text-xs sm:text-sm text-gray-500 mb-0.5">Next Milestone</p>
+                                  <p className="text-xs xs:text-sm sm:text-base md:text-lg font-medium text-gray-800">
+                                    {eq.next_milestone || 'Not set'}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="text-right flex-shrink-0">
+                                {eq.po_cdd && eq.po_cdd !== 'To be scheduled' && (
+                                  <div className="mb-1 sm:mb-2">
+                                    <div className="text-[9px] xs:text-[10px] sm:text-xs text-gray-500 mb-0.5">Date</div>
+                                    <div className="text-xs xs:text-sm sm:text-base font-semibold text-blue-600">
+                                      {(() => {
+                                        try {
+                                          const date = new Date(eq.po_cdd);
+                                          return date.toLocaleDateString('en-US', { 
+                                            month: 'short', 
+                                            day: 'numeric', 
+                                            year: 'numeric' 
+                                          });
+                                        } catch {
+                                          return eq.po_cdd;
+                                        }
+                                      })()}
+                                    </div>
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-1 text-[9px] xs:text-[10px] sm:text-xs text-gray-500">
+                                  <Clock className="w-3 h-3 xs:w-3.5 xs:h-3.5" />
+                                  <span>Milestone</span>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {/* Progress Bar */}
+                            {eq.progress !== undefined && (
+                              <div className="mt-2 sm:mt-3">
+                                <div className="flex items-center justify-between mb-0.5 sm:mb-1">
+                                  <span className="text-[10px] xs:text-xs sm:text-sm text-gray-600">Progress</span>
+                                  <span className="text-[10px] xs:text-xs sm:text-sm md:text-base font-medium text-gray-700">{eq.progress || 0}%</span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-1.5 sm:h-2">
+                                  <div
+                                    className="bg-blue-600 h-1.5 sm:h-2 rounded-full transition-all"
+                                    style={{ width: `${eq.progress || 0}%` }}
+                                  />
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}

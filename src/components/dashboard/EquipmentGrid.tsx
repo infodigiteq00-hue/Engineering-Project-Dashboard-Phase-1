@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Eye, Calendar, User, MapPin, ChevronLeft, ChevronRight, FileText, Users, Settings, TrendingUp, AlertTriangle, ClipboardCheck, Shield, Plus, Edit, Check, X, Camera, Upload, Clock, Building, Trash2, Mic, MicOff, Play, Pause, ChevronDown, Search } from "lucide-react";
@@ -115,6 +116,8 @@ interface Equipment {
     role: 'editor' | 'viewer';
   }>;
   certificationTitle?: string;
+  notes?: string;
+  nextMilestoneDate?: string;
 }
 
 interface EquipmentGridProps {
@@ -139,7 +142,10 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
     customEquipmentName: '',
     tagNumber: '',
     jobNumber: '',
-    msnNumber: ''
+    msnNumber: '',
+    size: '',
+    material: '',
+    designCode: ''
   });
   const [editingEquipmentId, setEditingEquipmentId] = useState<string | null>(null);
   const [editFormData, setEditFormData] = useState<Partial<Equipment>>({});
@@ -197,6 +203,10 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
   const [imageAudioChunks, setImageAudioChunks] = useState<Blob[]>([]);
   const [imageRecordingDuration, setImageRecordingDuration] = useState(0);
   const [imageRecordingTimer, setImageRecordingTimer] = useState<NodeJS.Timeout | null>(null);
+
+  // Overview tab state
+  const [overviewLastUpdateRaw, setOverviewLastUpdateRaw] = useState<Record<string, string>>({});
+  const [overviewNextMilestoneDate, setOverviewNextMilestoneDate] = useState<Record<string, string>>({});
 
   // Custom fields state
   const [newCustomFieldName, setNewCustomFieldName] = useState('');
@@ -285,6 +295,8 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         progressImagesMetadata: eq.progress_images_metadata || [], // Main progress images metadata
         progressEntries: eq.progress_entries || [], // Progress entries from equipment_progress_entries table (updates tab)
         nextMilestone: eq.next_milestone || 'Initial Setup',
+        nextMilestoneDate: eq.next_milestone_date || undefined,
+        notes: eq.notes || undefined,
         priority: eq.priority || 'medium',
         documents: eq.documents || [],
         isBasicInfo: eq.is_basic_info || true,
@@ -698,6 +710,95 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
     }
   };
 
+  // Format functions for Overview tab
+  const formatDateTimeDisplay = (dateTimeString: string) => {
+    try {
+      const date = new Date(dateTimeString);
+      return date.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch {
+      return dateTimeString;
+    }
+  };
+
+  const formatDateDisplay = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+    } catch {
+      return dateString;
+    }
+  };
+
+  // Initialize Overview tab date fields when edit mode starts
+  useEffect(() => {
+    if (editingEquipmentId) {
+      const equipment = localEquipment.find(eq => eq.id === editingEquipmentId);
+      if (equipment) {
+        // Initialize lastUpdate date if not already set
+        if (!overviewLastUpdateRaw[editingEquipmentId] && equipment.lastUpdate) {
+          try {
+            let date: Date;
+            if (typeof equipment.lastUpdate === 'string') {
+              date = new Date(equipment.lastUpdate);
+              if (isNaN(date.getTime()) && equipment.lastUpdate.includes('/')) {
+                const parts = equipment.lastUpdate.split('/');
+                if (parts.length === 3) {
+                  date = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]));
+                }
+              }
+            } else {
+              date = new Date(equipment.lastUpdate);
+            }
+            
+            if (!isNaN(date.getTime())) {
+              const year = date.getFullYear();
+              const month = String(date.getMonth() + 1).padStart(2, '0');
+              const day = String(date.getDate()).padStart(2, '0');
+              const hours = String(date.getHours()).padStart(2, '0');
+              const minutes = String(date.getMinutes()).padStart(2, '0');
+              setOverviewLastUpdateRaw(prev => ({
+                ...prev,
+                [editingEquipmentId]: `${year}-${month}-${day}T${hours}:${minutes}`
+              }));
+            }
+          } catch (e) {
+            console.error('Error initializing lastUpdate date:', e);
+          }
+        }
+
+        // Initialize nextMilestoneDate if not already set - check both equipment and editFormData
+        const nextMilestoneDateValue = equipment.nextMilestoneDate || editFormData.nextMilestoneDate;
+        if (!overviewNextMilestoneDate[editingEquipmentId] && nextMilestoneDateValue) {
+          try {
+            const date = new Date(nextMilestoneDateValue);
+            if (!isNaN(date.getTime())) {
+              const year = date.getFullYear();
+              const month = String(date.getMonth() + 1).padStart(2, '0');
+              const day = String(date.getDate()).padStart(2, '0');
+              setOverviewNextMilestoneDate(prev => ({
+                ...prev,
+                [editingEquipmentId]: `${year}-${month}-${day}`
+              }));
+            }
+          } catch (e) {
+            console.error('Error initializing nextMilestoneDate:', e);
+          }
+        }
+      }
+    }
+  }, [editingEquipmentId, localEquipment, editFormData.nextMilestoneDate]);
+
   // Load team members when component mounts
   useEffect(() => {
     fetchAvailableTeamMembers();
@@ -1029,6 +1130,8 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
       location: equipment.location || '',
       supervisor: equipment.supervisor || '',
       nextMilestone: equipment.nextMilestone || '',
+      nextMilestoneDate: equipment.nextMilestoneDate || undefined,
+      notes: equipment.notes || undefined,
       size: equipment.size || '',
       weight: equipment.weight || '',
       designCode: equipment.designCode || '',
@@ -1042,10 +1145,77 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
       completionDate: equipment.completionDate || '',
       status: equipment.status || 'on-track',
       customFields: equipment.customFields || [],
-      certificationTitle: equipment.certificationTitle || ''
+      certificationTitle: equipment.certificationTitle || '',
+      lastUpdate: equipment.lastUpdate || ''
     };
     // console.log('🔧 Setting editFormData:', formData);
     // console.log('🔧 equipment.customFields:', equipment.customFields);
+
+    // Pre-fill Overview tab fields
+    // Convert lastUpdate to datetime-local format
+    if (equipment.lastUpdate) {
+      try {
+        // Try to parse the date string and convert to datetime-local format
+        // Handle different date formats (MM/DD/YYYY, ISO string, etc.)
+        let date: Date;
+        if (typeof equipment.lastUpdate === 'string') {
+          // Try parsing as is first
+          date = new Date(equipment.lastUpdate);
+          // If that fails, try parsing as MM/DD/YYYY format
+          if (isNaN(date.getTime()) && equipment.lastUpdate.includes('/')) {
+            const parts = equipment.lastUpdate.split('/');
+            if (parts.length === 3) {
+              date = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]));
+            }
+          }
+        } else {
+          date = new Date(equipment.lastUpdate);
+        }
+        
+        if (!isNaN(date.getTime())) {
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          const hours = String(date.getHours()).padStart(2, '0');
+          const minutes = String(date.getMinutes()).padStart(2, '0');
+          setOverviewLastUpdateRaw(prev => ({
+            ...prev,
+            [equipment.id]: `${year}-${month}-${day}T${hours}:${minutes}`
+          }));
+        }
+      } catch (e) {
+        // If parsing fails, leave empty
+        console.error('Error parsing lastUpdate date:', e);
+      }
+    }
+
+    // Convert nextMilestoneDate to date format
+    const nextMilestoneDateValue = equipment.nextMilestoneDate;
+    if (nextMilestoneDateValue) {
+      try {
+        const date = new Date(nextMilestoneDateValue);
+        if (!isNaN(date.getTime())) {
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          setOverviewNextMilestoneDate(prev => ({
+            ...prev,
+            [equipment.id]: `${year}-${month}-${day}`
+          }));
+        } else {
+          console.warn('Invalid nextMilestoneDate:', nextMilestoneDateValue);
+        }
+      } catch (e) {
+        console.error('Error parsing nextMilestoneDate:', e, nextMilestoneDateValue);
+      }
+    } else {
+      // Clear the date if it doesn't exist
+      setOverviewNextMilestoneDate(prev => {
+        const updated = { ...prev };
+        delete updated[equipment.id];
+        return updated;
+      });
+    }
 
     // Reset progress entry form fields for new entries
     setNewProgressType('general');
@@ -1359,6 +1529,16 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         po_cdd: editFormData.poCdd,
         location: editFormData.location,
         next_milestone: editFormData.nextMilestone,
+        // Save next milestone date from Overview tab
+        next_milestone_date: overviewNextMilestoneDate[editingEquipmentId] 
+          ? new Date(overviewNextMilestoneDate[editingEquipmentId]).toISOString() 
+          : editFormData.nextMilestoneDate || undefined,
+        // Save notes from Overview tab
+        notes: editFormData.notes || undefined,
+        // Save technical specifications
+        size: editFormData.size || undefined,
+        material: editFormData.material || undefined,
+        design_code: editFormData.designCode || undefined,
         is_basic_info: false,
         // User tracking fields
         updated_by: user?.id, // Add current user as updater
@@ -2734,7 +2914,10 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         manufacturingSerial: miniFormData.msnNumber,
         projectId: projectId,
         status: 'design',
-        priority: 'medium'
+        priority: 'medium',
+        size: miniFormData.size,
+        material: miniFormData.material,
+        designCode: miniFormData.designCode
       };
 
       await handleAddEquipment(newEquipment);
@@ -2746,7 +2929,10 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         customEquipmentName: '', 
         tagNumber: '', 
         jobNumber: '', 
-        msnNumber: '' 
+        msnNumber: '',
+        size: '',
+        material: '',
+        designCode: ''
       });
       setShowMiniForm(false);
       
@@ -2806,9 +2992,13 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         project_manager: '',
         // Initialize progress images as empty array
         progress_images: [],
+        // Store technical specifications
+        size: newEquipment.size || '',
+        material: newEquipment.material || '',
+        design_code: newEquipment.designCode || '',
         // Store technical specifications in custom_fields JSONB
         custom_fields: [
-          { name: 'Dimensions', value: newEquipment.dimensions || '' },
+          { name: 'Dimensions', value: newEquipment.dimensions || newEquipment.size || '' },
           { name: 'Weight', value: newEquipment.weight || '' },
           { name: 'Material', value: newEquipment.material || '' },
           { name: 'Pressure', value: newEquipment.pressure || '' },
@@ -3016,6 +3206,48 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                   placeholder="Enter MSN number"
                   className="w-full"
                 />
+              </div>
+            </div>
+
+            {/* Technical Specifications Section */}
+            <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-gray-200">
+              <Label className="text-sm sm:text-base font-semibold text-gray-800 mb-3 sm:mb-4 block">Technical Specifications</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                <div>
+                  <Label htmlFor="inline-size" className="text-xs sm:text-sm font-medium text-gray-700 mb-2 block">Size</Label>
+                  <Input
+                    id="inline-size"
+                    value={miniFormData.size}
+                    onChange={(e) => setMiniFormData(prev => ({ ...prev, size: e.target.value }))}
+                    placeholder="e.g., 4.2m x 1.6m"
+                    className="w-full"
+                  />
+                  <p className="text-[10px] sm:text-xs text-gray-400 mt-1">Dimensions (length × width × height)</p>
+                </div>
+                
+                <div>
+                  <Label htmlFor="inline-material" className="text-xs sm:text-sm font-medium text-gray-700 mb-2 block">Material</Label>
+                  <Input
+                    id="inline-material"
+                    value={miniFormData.material}
+                    onChange={(e) => setMiniFormData(prev => ({ ...prev, material: e.target.value }))}
+                    placeholder="e.g., SS 304, Carbon Steel"
+                    className="w-full"
+                  />
+                  <p className="text-[10px] sm:text-xs text-gray-400 mt-1">Primary material specification</p>
+                </div>
+                
+                <div>
+                  <Label htmlFor="inline-design-code" className="text-xs sm:text-sm font-medium text-gray-700 mb-2 block">Design Code</Label>
+                  <Input
+                    id="inline-design-code"
+                    value={miniFormData.designCode}
+                    onChange={(e) => setMiniFormData(prev => ({ ...prev, designCode: e.target.value }))}
+                    placeholder="e.g., ASME VIII Div 1, TEMA Class R"
+                    className="w-full"
+                  />
+                  <p className="text-[10px] sm:text-xs text-gray-400 mt-1">Applicable design standard</p>
+                </div>
               </div>
             </div>
             
@@ -3591,8 +3823,9 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
 
 
 
-                  <Tabs defaultValue="technical" className="w-full flex-1 flex flex-col">
-                    <TabsList className="grid w-full grid-cols-4 h-8 sm:h-9">
+                  <Tabs defaultValue="overview" className="w-full flex-1 flex flex-col">
+                    <TabsList className="grid w-full grid-cols-5 h-8 sm:h-9">
+                      <TabsTrigger value="overview" className="text-xs px-2 sm:px-3">Overview</TabsTrigger>
                       <TabsTrigger value="technical" className="text-xs px-2 sm:px-3">Technical</TabsTrigger>
                       <TabsTrigger value="team" className="text-xs px-2 sm:px-3">Team</TabsTrigger>
                       <TabsTrigger value="progress" className="text-xs px-2 sm:px-3">Updates</TabsTrigger>
@@ -3605,6 +3838,171 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                       </TabsTrigger>
                     </TabsList>
 
+                    <TabsContent value="overview" className="mt-3 sm:mt-4 space-y-3">
+                      {editingEquipmentId === item.id ? (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div>
+                              <Label className="text-xs text-gray-600">Size</Label>
+                              <Input
+                                placeholder="e.g., 4.2m x 1.6m"
+                                value={editFormData.size ?? ''}
+                                onChange={(e) => setEditFormData({...editFormData, size: e.target.value})}
+                                className="text-xs h-8"
+                              />
+                              <p className="text-[11px] text-gray-400 mt-1">Dimensions (length × width × height)</p>
+                            </div>
+                            <div>
+                              <Label className="text-xs text-gray-600">Material</Label>
+                              <Input
+                                placeholder="e.g., SS 304, Carbon Steel"
+                                value={editFormData.material ?? ''}
+                                onChange={(e) => setEditFormData({...editFormData, material: e.target.value})}
+                                className="text-xs h-8"
+                              />
+                              <p className="text-[11px] text-gray-400 mt-1">Primary material specification</p>
+                            </div>
+                            <div>
+                              <Label className="text-xs text-gray-600">Design Code</Label>
+                              <Input
+                                placeholder="e.g., ASME VIII Div 1, TEMA Class R"
+                                value={editFormData.designCode ?? ''}
+                                onChange={(e) => setEditFormData({...editFormData, designCode: e.target.value})}
+                                className="text-xs h-8"
+                              />
+                              <p className="text-[11px] text-gray-400 mt-1">Applicable design standard</p>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <Label className="text-xs text-gray-600">Last Updated On</Label>
+                              <Input
+                                type="datetime-local"
+                                value={overviewLastUpdateRaw[item.id] || ''}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  setOverviewLastUpdateRaw(prev => ({ ...prev, [item.id]: raw }));
+                                  setEditFormData({
+                                    ...editFormData,
+                                    lastUpdate: raw ? formatDateTimeDisplay(raw) : ''
+                                  });
+                                }}
+                                className="text-xs h-8"
+                              />
+                              <p className="text-[11px] text-gray-400 mt-1">Reference timestamp shown to the team</p>
+                              {overviewLastUpdateRaw[item.id] && (
+                                <p className="text-[11px] text-blue-500 mt-1">
+                                  {formatDateTimeDisplay(overviewLastUpdateRaw[item.id])}
+                                </p>
+                              )}
+                            </div>
+                            <div>
+                              <Label className="text-xs text-gray-600">Next Milestone Date</Label>
+                              <Input
+                                type="date"
+                                value={overviewNextMilestoneDate[item.id] || (editFormData.nextMilestoneDate ? new Date(editFormData.nextMilestoneDate).toISOString().split('T')[0] : '')}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  setOverviewNextMilestoneDate(prev => ({ ...prev, [item.id]: raw }));
+                                  setEditFormData({
+                                    ...editFormData,
+                                    nextMilestoneDate: raw ? new Date(raw).toISOString() : undefined
+                                  });
+                                }}
+                                className="text-xs h-8"
+                              />
+                              <p className="text-[11px] text-gray-400 mt-1">Pick the milestone date from the calendar</p>
+                              {(overviewNextMilestoneDate[item.id] || editFormData.nextMilestoneDate) && (
+                                <p className="text-[11px] text-blue-500 mt-1">
+                                  {formatDateDisplay(overviewNextMilestoneDate[item.id] || editFormData.nextMilestoneDate || '')}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-gray-600">Next Milestone Title / Summary</Label>
+                            <Input
+                              placeholder="e.g., Hydro Test"
+                              value={editFormData.nextMilestone ?? ''}
+                              onChange={(e) => setEditFormData({...editFormData, nextMilestone: e.target.value})}
+                              className="text-xs h-8"
+                            />
+                            <p className="text-[11px] text-gray-400 mt-1">Short description that appears with the milestone date</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-gray-600">Update Description / Notes</Label>
+                            <Textarea
+                              placeholder="Share the latest progress, issues, or any client-facing summary"
+                              value={editFormData.notes ?? ''}
+                              onChange={(e) => setEditFormData({...editFormData, notes: e.target.value})}
+                              className="text-xs min-h-[88px]"
+                            />
+                            <p className="text-[11px] text-gray-400 mt-1">This summary will surface in the overview snapshot</p>
+                          </div>
+                        </div>
+                      ) : (
+                        (() => {
+                          const sizeValue = item.size && item.size.trim() !== '' ? item.size : '—';
+                          const materialValue = item.material && item.material.trim() !== '' ? item.material : '—';
+                          const designCodeValue = item.designCode && item.designCode.trim() !== '' ? item.designCode : '—';
+                          const equipmentEntries = progressEntries[item.id] || item.progressEntries || [];
+                          const latestEntry = equipmentEntries.length > 0 ? equipmentEntries[equipmentEntries.length - 1] : null;
+                          const latestEntryAny = latestEntry as any;
+                          const lastUpdatedValue = latestEntryAny?.date || (latestEntry as ProgressEntry)?.created_at || latestEntryAny?.uploadDate || (latestEntry as ProgressEntry)?.uploadDate || item.lastUpdate || '—';
+                          const updateDescription =
+                            latestEntryAny?.text || (latestEntry as ProgressEntry)?.comment || (latestEntry as ProgressEntry)?.entry_text ||
+                            (item.notes && item.notes.trim() !== '' ? item.notes : '') ||
+                            (item.nextMilestone && item.nextMilestone.trim() !== '' ? item.nextMilestone : '') ||
+                            'No recent update details shared yet.';
+
+                          return (
+                            <>
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
+                                  <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Size</div>
+                                  <div className="text-sm font-semibold text-gray-900">{sizeValue}</div>
+                                  <div className="text-[11px] text-gray-400 mt-1">Dimensions (L × W × H)</div>
+                                </div>
+                                <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
+                                  <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Material</div>
+                                  <div className="text-sm font-semibold text-gray-900">{materialValue}</div>
+                                  <div className="text-[11px] text-gray-400 mt-1">Primary specification</div>
+                                </div>
+                                <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
+                                  <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Design Code</div>
+                                  <div className="text-sm font-semibold text-gray-900">{designCodeValue}</div>
+                                  <div className="text-[11px] text-gray-400 mt-1">Applicable standard</div>
+                                </div>
+                              </div>
+                              <div className="p-4 rounded-lg border border-blue-100 bg-blue-50">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                  <div>
+                                    <div className="text-[11px] uppercase tracking-wide text-blue-600">Last Updated</div>
+                                    <div className="text-sm font-semibold text-gray-900 mt-1">{lastUpdatedValue}</div>
+                                  </div>
+                                  {(item.nextMilestone && item.nextMilestone.trim() !== '') || item.nextMilestoneDate ? (
+                                    <div className="text-left sm:text-right">
+                                      <div className="text-[11px] uppercase tracking-wide text-blue-500">Next Milestone</div>
+                                      {item.nextMilestone && item.nextMilestone.trim() !== '' && (
+                                        <div className="text-xs font-medium text-blue-700 mt-1">{item.nextMilestone}</div>
+                                      )}
+                                      {item.nextMilestoneDate && (
+                                        <div className="text-[11px] text-blue-500 mt-1">
+                                          {formatDateDisplay(item.nextMilestoneDate)}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : null}
+                                </div>
+                                <div className="mt-3 p-3 rounded-md bg-white/70 border border-blue-100 text-xs text-blue-700 leading-relaxed">
+                                  {updateDescription}
+                                </div>
+                              </div>
+                            </>
+                          );
+                        })()
+                      )}
+                    </TabsContent>
                     <TabsContent value="technical" className="mt-3 sm:mt-4 space-y-2 flex-1 flex flex-col">
                       <div className="space-y-2 text-xs sm:text-sm flex-1 flex flex-col">
                         {/* Technical Section Buttons */}

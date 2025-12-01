@@ -534,6 +534,9 @@ const Index = () => {
           tagNumber: equipment.tag_number || '',
           jobNumber: equipment.job_number || '',
           manufacturingSerial: equipment.manufacturing_serial || '',
+          size: equipment.size || '',
+          material: equipment.material || '',
+          designCode: equipment.design_code || '',
           documents: [] // Equipment documents will be handled separately
         });
         return acc;
@@ -1362,7 +1365,7 @@ Note: Please download the Recommendation Letter template using the link above, f
             <ProjectSummaryCards totalProjects={totalProjects} totalEquipment={totalEquipment} />
 
             {/* Company Highlights Section */}
-            {/* <CompanyHighlights onSelectProject={handleSelectProject} /> */}
+            <CompanyHighlights onSelectProject={handleSelectProject} />
 
             {/* Expandable Project Filters */}
             <div className="mb-6 sm:mb-8">

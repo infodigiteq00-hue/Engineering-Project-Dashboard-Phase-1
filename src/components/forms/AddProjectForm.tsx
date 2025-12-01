@@ -478,6 +478,9 @@ const AddProjectForm = ({ onClose, onSubmit, editData, isEditMode }: AddProjectF
     tagNumber: string;
     jobNumber: string;
     manufacturingSerial: string;
+    size: string;
+    material: string;
+    designCode: string;
     documents: File[];
   }>>>(isEditMode && editData ? (editData as any).equipment || {} : {});
   
@@ -1754,6 +1757,9 @@ Industry: Petrochemical`;
               tagNumber: '',
               jobNumber: '',
               manufacturingSerial: '',
+              size: '',
+              material: '',
+              designCode: '',
               documents: []
             }));
             return { ...prev, [equipmentType]: [...existingEquipment, ...newEntries] };
@@ -1772,6 +1778,9 @@ Industry: Petrochemical`;
           tagNumber: '',
           jobNumber: '',
           manufacturingSerial: '',
+          size: '',
+          material: '',
+          designCode: '',
           documents: []
         }));
         return { ...prev, [equipmentType]: details };
@@ -2029,6 +2038,9 @@ Industry: Petrochemical`;
                  tag_number: equipment.tagNumber || 'TBD',
                  job_number: equipment.jobNumber || 'TBD',
                  manufacturing_serial: equipment.manufacturingSerial || 'TBD',
+                 size: equipment.size || '',
+                 material: equipment.material || '',
+                 design_code: equipment.designCode || '',
                  // Don't overwrite status/progress in edit mode - keep existing values
                  // status: 'pending',
                  // progress: 0,
@@ -2105,6 +2117,9 @@ Industry: Petrochemical`;
                      tag_number: equipment.tagNumber,
                      job_number: equipment.jobNumber,
                      manufacturing_serial: equipment.manufacturingSerial,
+                     size: equipment.size || '',
+                     material: equipment.material || '',
+                     design_code: equipment.designCode || '',
                      // Don't overwrite status/progress - keep existing values
                    };
                    
@@ -2121,6 +2136,9 @@ Industry: Petrochemical`;
                    tag_number: equipment.tagNumber,
                    job_number: equipment.jobNumber,
                    manufacturing_serial: equipment.manufacturingSerial,
+                   size: equipment.size || '',
+                   material: equipment.material || '',
+                   design_code: equipment.designCode || '',
                    status: 'pending',
                    progress: 0,
                    progress_phase: 'documentation'
@@ -2531,6 +2549,9 @@ Industry: Petrochemical`;
             tag_number: equipment.tagNumber || 'TBD',
             job_number: equipment.jobNumber || 'TBD',
             manufacturing_serial: equipment.manufacturingSerial || 'TBD',
+            size: equipment.size || '',
+            material: equipment.material || '',
+            design_code: equipment.designCode || '',
             status: 'pending',
             progress: 0,
             progress_phase: 'documentation'
@@ -3980,6 +4001,51 @@ Industry: Petrochemical`;
                             required
                             className="text-xs sm:text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500 h-8 sm:h-10"
                           />
+                        </div>
+                      </div>
+
+                      {/* Technical Specifications */}
+                      <div className="mb-3 sm:mb-4">
+                        <h6 className="text-xs sm:text-sm font-semibold text-gray-800 mb-2 sm:mb-3">Technical Specifications</h6>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 lg:gap-4">
+                          <div className="space-y-1.5 sm:space-y-2">
+                            <Label className="text-xs sm:text-sm font-medium text-gray-700">
+                              Size
+                            </Label>
+                            <Input
+                              value={equipment.size || ''}
+                              onChange={(e) => updateEquipmentDetail(equipmentType, index, 'size', e.target.value)}
+                              placeholder="e.g., 4.2m x 1.6m"
+                              className="text-xs sm:text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500 h-8 sm:h-10"
+                            />
+                            <p className="text-[10px] sm:text-xs text-gray-500">Dimensions (length x width x height)</p>
+                          </div>
+
+                          <div className="space-y-1.5 sm:space-y-2">
+                            <Label className="text-xs sm:text-sm font-medium text-gray-700">
+                              Material
+                            </Label>
+                            <Input
+                              value={equipment.material || ''}
+                              onChange={(e) => updateEquipmentDetail(equipmentType, index, 'material', e.target.value)}
+                              placeholder="e.g., SS 304, Carbon Steel"
+                              className="text-xs sm:text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500 h-8 sm:h-10"
+                            />
+                            <p className="text-[10px] sm:text-xs text-gray-500">Primary material specification</p>
+                          </div>
+
+                          <div className="space-y-1.5 sm:space-y-2">
+                            <Label className="text-xs sm:text-sm font-medium text-gray-700">
+                              Design Code
+                            </Label>
+                            <Input
+                              value={equipment.designCode || ''}
+                              onChange={(e) => updateEquipmentDetail(equipmentType, index, 'designCode', e.target.value)}
+                              placeholder="e.g., ASME VIII Div 1, TEMA Class R"
+                              className="text-xs sm:text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500 h-8 sm:h-10"
+                            />
+                            <p className="text-[10px] sm:text-xs text-gray-500">Applicable design standard</p>
+                          </div>
                         </div>
                       </div>
 
