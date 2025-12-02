@@ -92,10 +92,11 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
           userRole === 'firm_admin' ? undefined : assignedProjectIds
         );
         
-        // Filter equipment that has next_milestone
+        // Filter equipment that has next_milestone - show all equipment with next_milestone set
         const eqArray = Array.isArray(equipment) ? equipment : [];
         const withMilestones = eqArray.filter((eq: any) => {
-          return eq.next_milestone && eq.next_milestone.trim() !== '' && eq.next_milestone !== 'Initial Setup';
+          // Show equipment that has next_milestone set (not empty/null)
+          return eq.next_milestone && eq.next_milestone.trim() !== '';
         });
         
         // Sort by project name and equipment type
@@ -348,10 +349,12 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
         return entryType !== 'update' && entryType !== 'general' && entryType !== 'comment';
       });
     } else {
-      // Show ONLY equipment card updates (from equipment_activity_logs with activity_type='equipment_updated')
-      return equipmentCardUpdates;
+      // Show ALL equipment progress entries (from equipment_progress_entries table)
+      // This includes all entry types: welding, testing, general, comment, update, etc.
+      // Same as what shows in equipment card's "Updates" tab
+      return productionUpdates;
     }
-  }, [productionUpdates, equipmentCardUpdates, productionSubTab]);
+  }, [productionUpdates, productionSubTab]);
 
   // Fetch documentation updates - only those with status changes
   useEffect(() => {
@@ -883,6 +886,12 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
                                 {entry.equipment?.type || entry.equipment?.name || 'Equipment'}
                               </p>
                             </div>
+                            {/* Image Badge - Show if image exists */}
+                            {(entry.image_url || entry.image) && (
+                              <span className="inline-flex items-center px-1.5 xs:px-2 sm:px-2.5 py-0.5 text-[9px] xs:text-[10px] sm:text-xs font-semibold rounded-full border bg-blue-50 text-blue-700 border-blue-200 mb-1.5 sm:mb-2">
+                                image
+                              </span>
+                            )}
                             <p className="text-[10px] xs:text-xs sm:text-sm md:text-base text-gray-600 mb-1.5 sm:mb-2 line-clamp-2">
                               {entry.entry_text || entry.comment || entry.entry_type || 'Progress update'}
                             </p>
@@ -1123,25 +1132,29 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
                                 </div>
                               </div>
                               <div className="text-right flex-shrink-0">
-                                {eq.po_cdd && eq.po_cdd !== 'To be scheduled' && (
-                                  <div className="mb-1 sm:mb-2">
-                                    <div className="text-[9px] xs:text-[10px] sm:text-xs text-gray-500 mb-0.5">Date</div>
-                                    <div className="text-xs xs:text-sm sm:text-base font-semibold text-blue-600">
-                                      {(() => {
-                                        try {
-                                          const date = new Date(eq.po_cdd);
-                                          return date.toLocaleDateString('en-US', { 
-                                            month: 'short', 
-                                            day: 'numeric', 
-                                            year: 'numeric' 
-                                          });
-                                        } catch {
-                                          return eq.po_cdd;
-                                        }
-                                      })()}
+                                {(() => {
+                                  // Use next_milestone_date if available, otherwise use po_cdd
+                                  const milestoneDate = eq.next_milestone_date || (eq.po_cdd && eq.po_cdd !== 'To be scheduled' ? eq.po_cdd : null);
+                                  return milestoneDate ? (
+                                    <div className="mb-1 sm:mb-2">
+                                      <div className="text-[9px] xs:text-[10px] sm:text-xs text-gray-500 mb-0.5">Date</div>
+                                      <div className="text-xs xs:text-sm sm:text-base font-semibold text-blue-600">
+                                        {(() => {
+                                          try {
+                                            const date = new Date(milestoneDate);
+                                            // Format as "8 Oct" (day month) to match screenshot
+                                            return date.toLocaleDateString('en-US', { 
+                                              month: 'short', 
+                                              day: 'numeric'
+                                            });
+                                          } catch {
+                                            return milestoneDate;
+                                          }
+                                        })()}
+                                      </div>
                                     </div>
-                                  </div>
-                                )}
+                                  ) : null;
+                                })()}
                                 <div className="flex items-center gap-1 text-[9px] xs:text-[10px] sm:text-xs text-gray-500">
                                   <Clock className="w-3 h-3 xs:w-3.5 xs:h-3.5" />
                                   <span>Milestone</span>

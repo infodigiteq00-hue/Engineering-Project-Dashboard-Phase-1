@@ -295,8 +295,41 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         progressImagesMetadata: eq.progress_images_metadata || [], // Main progress images metadata
         progressEntries: eq.progress_entries || [], // Progress entries from equipment_progress_entries table (updates tab)
         nextMilestone: eq.next_milestone || 'Initial Setup',
-        nextMilestoneDate: eq.next_milestone_date || undefined,
-        notes: eq.notes || undefined,
+        // Get next_milestone_date from custom_fields (equipment table doesn't have this column)
+        nextMilestoneDate: (() => {
+          if (eq.next_milestone_date) return eq.next_milestone_date;
+          if (eq.custom_fields && Array.isArray(eq.custom_fields)) {
+            const field = eq.custom_fields.find((f: any) => f.name === 'Next Milestone Date');
+            return field?.value || undefined;
+          }
+          return undefined;
+        })(),
+        // Get notes from custom_fields (equipment table doesn't have this column)
+        notes: (() => {
+          // First check if notes column exists (for standalone_equipment table)
+          if (eq.notes !== null && eq.notes !== undefined && eq.notes !== '') {
+            console.log('📝 [transformEquipmentData] Notes found in eq.notes:', eq.notes);
+            return eq.notes;
+          }
+          // Then check custom_fields (for equipment table)
+          if (eq.custom_fields && Array.isArray(eq.custom_fields)) {
+            console.log('📝 [transformEquipmentData] Checking custom_fields:', eq.custom_fields);
+            // Try multiple possible field names
+            const possibleNames = ['Notes', 'Update Description', 'notes', 'Notes / Update Description'];
+            for (const name of possibleNames) {
+              const field = eq.custom_fields.find((f: any) => 
+                f.name && f.name.trim() === name.trim()
+              );
+              if (field && field.value !== null && field.value !== undefined) {
+                console.log('📝 [transformEquipmentData] Notes found in custom_fields:', field.value, 'field name:', field.name);
+                // Return the value even if it's an empty string (for pre-filling)
+                return field.value;
+              }
+            }
+          }
+          console.log('📝 [transformEquipmentData] No notes found for equipment:', eq.id);
+          return undefined;
+        })(),
         priority: eq.priority || 'medium',
         documents: eq.documents || [],
         isBasicInfo: eq.is_basic_info || true,
@@ -1125,13 +1158,55 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
   };
 
   const handleEditEquipment = (equipment: Equipment) => {
+    console.log('🔧 [handleEditEquipment] Called with equipment:', equipment.id, 'notes:', equipment.notes);
     setEditingEquipmentId(equipment.id);
+    
+    // Extract notes from multiple sources
+    const notesValue = (() => {
+      // First check equipment.notes (direct column or extracted from custom_fields)
+      if (equipment.notes !== null && equipment.notes !== undefined) {
+        console.log('📝 [handleEditEquipment] Notes found in equipment.notes:', equipment.notes);
+        return equipment.notes; // Return even if empty string for pre-filling
+      }
+      // Then check equipment.customFields
+      if (equipment.customFields && Array.isArray(equipment.customFields)) {
+        console.log('📝 [handleEditEquipment] Checking equipment.customFields:', equipment.customFields);
+        const possibleNames = ['Notes', 'Update Description', 'notes', 'Notes / Update Description'];
+        for (const name of possibleNames) {
+          const field = equipment.customFields.find((f: any) => 
+            f.name && f.name.trim() === name.trim()
+          );
+          if (field && field.value !== null && field.value !== undefined) {
+            console.log('📝 [handleEditEquipment] Notes found in equipment.customFields:', field.value, 'field name:', field.name);
+            return field.value; // Return even if empty string for pre-filling
+          }
+        }
+      }
+      // Finally check customFields state (in case equipment object is stale)
+      const stateCustomFields = customFields[equipment.id];
+      if (stateCustomFields && Array.isArray(stateCustomFields)) {
+        console.log('📝 [handleEditEquipment] Checking customFields state:', stateCustomFields);
+        const possibleNames = ['Notes', 'Update Description', 'notes', 'Notes / Update Description'];
+        for (const name of possibleNames) {
+          const field = stateCustomFields.find((f: any) => 
+            f.name && f.name.trim() === name.trim()
+          );
+          if (field && field.value !== null && field.value !== undefined) {
+            console.log('📝 [handleEditEquipment] Notes found in customFields state:', field.value, 'field name:', field.name);
+            return field.value; // Return even if empty string for pre-filling
+          }
+        }
+      }
+      console.log('📝 [handleEditEquipment] No notes found. equipment.notes:', equipment.notes, 'customFields:', customFields[equipment.id]);
+      return undefined;
+    })();
+    
     const formData = {
       location: equipment.location || '',
       supervisor: equipment.supervisor || '',
       nextMilestone: equipment.nextMilestone || '',
-      nextMilestoneDate: equipment.nextMilestoneDate || undefined,
-      notes: equipment.notes || undefined,
+      nextMilestoneDate: equipment.nextMilestoneDate !== null && equipment.nextMilestoneDate !== undefined ? equipment.nextMilestoneDate : undefined,
+      notes: notesValue,
       size: equipment.size || '',
       weight: equipment.weight || '',
       designCode: equipment.designCode || '',
@@ -1139,6 +1214,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
       workingPressure: equipment.workingPressure || '',
       designTemp: equipment.designTemp || '',
       welder: equipment.welder || '',
+      engineer: equipment.engineer || '',
       qcInspector: equipment.qcInspector || '',
       projectManager: equipment.projectManager || '',
       poCdd: equipment.poCdd || '',
@@ -1233,6 +1309,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
     setImageAudioChunks([]);
     setImageRecordingDuration(0);
     setIsImageRecording(false);
+    console.log('🔧 [handleEditEquipment] Setting editFormData.notes:', formData.notes, 'full formData:', formData);
     setEditFormData(formData);
 
     // Fetch documents for this equipment when entering edit mode
@@ -1521,6 +1598,34 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
 
       // Prepare equipment data for API call with proper field mapping
       // Only include fields that exist in the database schema
+      // Note: equipment table doesn't have notes and next_milestone_date columns, store in custom_fields
+      const existingCustomFields = customFields[editingEquipmentId] || [];
+      const customFieldsToSave = [...existingCustomFields];
+      
+      // Add/update next_milestone_date in custom_fields (equipment table doesn't have this column)
+      const nextMilestoneDateValue = overviewNextMilestoneDate[editingEquipmentId] 
+        ? new Date(overviewNextMilestoneDate[editingEquipmentId]).toISOString() 
+        : (editFormData.nextMilestoneDate ? new Date(editFormData.nextMilestoneDate).toISOString() : null);
+      
+      const nextMilestoneDateIndex = customFieldsToSave.findIndex((f: any) => f.name === 'Next Milestone Date');
+      if (nextMilestoneDateValue) {
+        if (nextMilestoneDateIndex >= 0) {
+          customFieldsToSave[nextMilestoneDateIndex].value = nextMilestoneDateValue;
+        } else {
+          customFieldsToSave.push({ name: 'Next Milestone Date', value: nextMilestoneDateValue });
+        }
+      } else if (nextMilestoneDateIndex >= 0) {
+        // Remove if value is null/undefined
+        customFieldsToSave.splice(nextMilestoneDateIndex, 1);
+      }
+      
+      // Remove notes from custom_fields since we're saving directly to notes column
+      // (Notes column exists in standalone_equipment table)
+      const notesIndex = customFieldsToSave.findIndex((f: any) => f.name === 'Notes' || f.name === 'Update Description');
+      if (notesIndex >= 0) {
+        customFieldsToSave.splice(notesIndex, 1);
+      }
+      
       const equipmentData: any = {
         // Map frontend fields to backend fields (using exact database column names)
         type: editFormData.type,
@@ -1529,12 +1634,9 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         po_cdd: editFormData.poCdd,
         location: editFormData.location,
         next_milestone: editFormData.nextMilestone,
-        // Save next milestone date from Overview tab
-        next_milestone_date: overviewNextMilestoneDate[editingEquipmentId] 
-          ? new Date(overviewNextMilestoneDate[editingEquipmentId]).toISOString() 
-          : editFormData.nextMilestoneDate || undefined,
-        // Save notes from Overview tab
-        notes: editFormData.notes || undefined,
+        // Save notes directly to notes column (exists in standalone_equipment table)
+        notes: editFormData.notes !== null && editFormData.notes !== undefined ? editFormData.notes : null,
+        // Note: next_milestone_date is saved in custom_fields (equipment table doesn't have this column)
         // Save technical specifications
         size: editFormData.size || undefined,
         material: editFormData.material || undefined,
@@ -1542,8 +1644,8 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         is_basic_info: false,
         // User tracking fields
         updated_by: user?.id, // Add current user as updater
-        // Include custom fields from state
-        custom_fields: customFields[editingEquipmentId] || [],
+        // Include custom fields from state (but NOT notes - saved directly to column)
+        custom_fields: customFieldsToSave,
         // Include technical sections from state
         technical_sections: technicalSections[editingEquipmentId] || [],
         // Include team custom fields from state
@@ -3425,8 +3527,23 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                             <Label className="text-xs text-gray-600">PO-CDD Date</Label>
                             <Input
                               type="date"
-                              value={editFormData.poCdd || item.poCdd}
-                              onChange={(e) => setEditFormData({ ...editFormData, poCdd: e.target.value })}
+                              value={(() => {
+                                const poCddValue = editFormData.poCdd || item.poCdd;
+                                // Don't set "To be scheduled" as date value
+                                if (!poCddValue || poCddValue === 'To be scheduled') return '';
+                                // Try to parse as date, return empty if invalid
+                                try {
+                                  const date = new Date(poCddValue);
+                                  if (isNaN(date.getTime())) return '';
+                                  const year = date.getFullYear();
+                                  const month = String(date.getMonth() + 1).padStart(2, '0');
+                                  const day = String(date.getDate()).padStart(2, '0');
+                                  return `${year}-${month}-${day}`;
+                                } catch {
+                                  return '';
+                                }
+                              })()}
+                              onChange={(e) => setEditFormData({ ...editFormData, poCdd: e.target.value || 'To be scheduled' })}
                               className="text-xs h-8"
                             />
                           </div>
@@ -3934,10 +4051,18 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                             <Textarea
                               placeholder="Share the latest progress, issues, or any client-facing summary"
                               value={editFormData.notes ?? ''}
-                              onChange={(e) => setEditFormData({...editFormData, notes: e.target.value})}
+                              onChange={(e) => {
+                                console.log('📝 Notes onChange:', e.target.value);
+                                setEditFormData({...editFormData, notes: e.target.value});
+                              }}
                               className="text-xs min-h-[88px]"
+                              disabled={false}
+                              readOnly={false}
                             />
                             <p className="text-[11px] text-gray-400 mt-1">This summary will surface in the overview snapshot</p>
+                            {process.env.NODE_ENV === 'development' && (
+                              <p className="text-[10px] text-gray-500 mt-1">Debug: editFormData.notes = {String(editFormData.notes ?? 'undefined')}</p>
+                            )}
                           </div>
                         </div>
                       ) : (
@@ -5696,29 +5821,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                           size="sm"
                           variant="outline"
                           className="flex-1 bg-white hover:bg-blue-50 border-blue-200 hover:border-blue-300 text-blue-700 text-xs sm:text-sm"
-                          onClick={() => {
-                            setEditingEquipmentId(item.id);
-                            const formData = {
-                              location: item.location || '',
-                              supervisor: item.supervisor || '',
-                              nextMilestone: item.nextMilestone || '',
-                              size: item.size || '',
-                              weight: item.weight || '',
-                              designCode: item.designCode || '',
-                              material: item.material || '',
-                              workingPressure: item.workingPressure || '',
-                              designTemp: item.designTemp || '',
-                              welder: item.welder || '',
-                              engineer: item.engineer || '',
-                              qcInspector: item.qcInspector || '',
-                              projectManager: item.projectManager || '',
-                              poCdd: item.poCdd || '',
-                              status: item.status || 'on-track',
-                              customFields: item.customFields || []
-                            };
-                            // console.log('🔧 Setting editFormData with custom fields:', formData);
-                            setEditFormData(formData);
-                          }}
+                          onClick={() => handleEditEquipment(item)}
                         >
                           <Edit size={14} className="mr-1" />
                           Edit

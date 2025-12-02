@@ -1369,7 +1369,8 @@ export const fastAPI = {
   async getAllEquipmentNearingCompletion(startDate?: string, endDate?: string, projectIds?: string[]) {
     try {
       // Fetch all equipment with po_cdd dates (including nulls, we'll filter in component)
-      let url = `/equipment?select=id,tag_number,type,name,progress,po_cdd,project_id,projects(id,name)&order=po_cdd.asc.nullsfirst`;
+      // Note: equipment table doesn't have next_milestone_date column, it's in custom_fields
+      let url = `/equipment?select=id,tag_number,type,name,progress,po_cdd,next_milestone,custom_fields,project_id,projects(id,name)&order=po_cdd.asc.nullsfirst`;
       // Only apply date filters if both are provided (for other use cases)
       // For timeline view, we don't pass dates, so it fetches all equipment
       if (startDate && endDate) {
@@ -1381,7 +1382,17 @@ export const fastAPI = {
         url += `&project_id=in.(${projectIdsString})`;
       }
       const response = await api.get(url);
-      return response.data || [];
+      // Transform data to extract next_milestone_date from custom_fields
+      const equipment = (response.data || []).map((eq: any) => {
+        if (eq.custom_fields && Array.isArray(eq.custom_fields)) {
+          const nextMilestoneDateField = eq.custom_fields.find((f: any) => f.name === 'Next Milestone Date');
+          if (nextMilestoneDateField) {
+            eq.next_milestone_date = nextMilestoneDateField.value;
+          }
+        }
+        return eq;
+      });
+      return equipment;
     } catch (error: any) {
       console.error('❌ Error fetching equipment nearing completion:', error);
       console.error('❌ Error details:', error.response?.data || error.message);
