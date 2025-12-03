@@ -368,6 +368,10 @@ export const fastAPI = {
 
   // Fetch single project by ID
   async getProjectById(projectId: string) {
+    // Skip for standalone equipment (no project_id)
+    if (projectId === 'standalone') {
+      return [];
+    }
     try {
       const response = await api.get(`/projects?id=eq.${projectId}&select=*`);
       return response.data;
@@ -570,31 +574,24 @@ export const fastAPI = {
     }
   },
 
-  // Fetch standalone equipment (not connected to any project) - filtered by firm_id via created_by -> users.firm_id
-  async getStandaloneEquipment(firmId?: string) {
+  // Fetch standalone equipment (not connected to any project) - filtered by created_by (only equipment added by current user)
+  async getStandaloneEquipment(firmId?: string, userId?: string) {
     try {
-      // Get firm_id from user data if not provided
-      if (!firmId) {
+      // Get user data if not provided
+      if (!userId || !firmId) {
         const userData = JSON.parse(localStorage.getItem('userData') || '{}');
-        firmId = userData.firm_id;
+        userId = userId || userData.id || localStorage.getItem('userId') || '';
+        firmId = firmId || userData.firm_id;
       }
       
-      if (!firmId) {
-        console.error('❌ No firm_id available for fetching standalone equipment');
+      if (!userId) {
+        console.error('❌ No user ID available for fetching standalone equipment');
         return [];
       }
       
-      // First, get all user IDs for this firm
-      const usersResponse = await api.get(`/users?firm_id=eq.${firmId}&select=id`).catch(() => ({ data: [] }));
-      const firmUserIds = (usersResponse.data || []).map((u: any) => u.id);
-      
-      if (firmUserIds.length === 0) {
-        return [];
-      }
-      
-      // Fetch standalone equipment where created_by is in the list of firm user IDs
-      // PostgREST supports filtering with 'in' operator
-      const response = await api.get(`/standalone_equipment?created_by=in.(${firmUserIds.join(',')})&select=*&order=created_at.desc`);
+      // Fetch standalone equipment where created_by equals current user ID
+      // Only show equipment that the current user added
+      const response = await api.get(`/standalone_equipment?created_by=eq.${userId}&select=*&order=created_at.desc`);
       const equipment = response.data;
       
       if (!equipment || !Array.isArray(equipment) || equipment.length === 0) {
@@ -829,6 +826,70 @@ export const fastAPI = {
       return response.data;
     } catch (error) {
       console.error('❌ Error fetching progress entries:', error);
+      throw error;
+    }
+  },
+
+  // ============================================================================
+  // STANDALONE EQUIPMENT PROGRESS ENTRIES FUNCTIONS
+  // ============================================================================
+
+  // Create standalone progress entry
+  async createStandaloneProgressEntry(entryData: {
+    equipment_id: string,
+    entry_text: string,
+    entry_type: string,
+    audio_data?: string,
+    audio_duration?: number,
+    image_url?: string,
+    image_description?: string,
+    created_by?: string
+  }) {
+    try {
+      const response = await api.post('/standalone_equipment_progress_entries', entryData);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error creating standalone progress entry:', error);
+      throw error;
+    }
+  },
+
+  // Get standalone progress entries for equipment with user information
+  async getStandaloneProgressEntriesByEquipment(equipmentId: string) {
+    try {
+      const response = await api.get(`/standalone_equipment_progress_entries?equipment_id=eq.${equipmentId}&select=*,users(full_name)&order=created_at.desc`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error fetching standalone progress entries:', error);
+      throw error;
+    }
+  },
+
+  // Update standalone progress entry
+  async updateStandaloneProgressEntry(entryId: string, updateData: {
+    entry_text?: string,
+    entry_type?: string,
+    audio_data?: string,
+    audio_duration?: number,
+    image_url?: string,
+    image_description?: string
+  }) {
+    try {
+      const response = await api.patch(`/standalone_equipment_progress_entries?id=eq.${entryId}`, updateData);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Error updating standalone progress entry:', error);
+      throw error;
+    }
+  },
+
+  // Delete standalone progress entry
+  async deleteStandaloneProgressEntry(entryId: string) {
+    try {
+      const response = await api.delete(`/standalone_equipment_progress_entries?id=eq.${entryId}`);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Error deleting standalone progress entry:', error);
       throw error;
     }
   },
@@ -1150,6 +1211,98 @@ export const fastAPI = {
       
       const response = await api.patch(`/standalone_equipment?id=eq.${id}`, updateData);
       
+      // Track changes for logging (similar to updateEquipment)
+      if (currentEquipment && response.data && Array.isArray(response.data) && response.data.length > 0) {
+        const updatedEquipment = response.data[0];
+        const changes: Record<string, { old: any; new: any }> = {};
+        
+        // Compare key fields for changes - only track meaningful changes
+        const fieldsToTrack = ['type', 'tag_number', 'status', 'progress', 'progress_phase', 'priority', 'notes', 'po_cdd'];
+        
+        // Helper to normalize values - treat "Not Assigned", "Not set", empty, null as equivalent
+        const normalizeForComparison = (val: any): string | null => {
+          if (val === null || val === undefined) return null;
+          const str = String(val).trim();
+          const lowerStr = str.toLowerCase();
+          // Treat all these as equivalent (no real value set)
+          if (str === '' || 
+              lowerStr === 'not set' || 
+              lowerStr === 'not-set' || 
+              lowerStr === 'not assigned' || 
+              lowerStr === 'null' || 
+              lowerStr === 'undefined') {
+            return null;
+          }
+          return str;
+        };
+        
+        // Check if progress_phase is changing (if so, we'll skip progress percentage changes)
+        const progressPhaseChanging = currentEquipment['progress_phase'] !== updatedEquipment['progress_phase'];
+        
+        fieldsToTrack.forEach(field => {
+          const oldValue = currentEquipment[field];
+          const newValue = updatedEquipment[field];
+          
+          // Skip progress percentage if progress_phase is also changing (progress is automatically set based on phase)
+          if (field === 'progress' && progressPhaseChanging) {
+            return; // Don't log progress changes when phase changes (it's automatic)
+          }
+          
+          // Only track if values actually changed
+          if (oldValue !== newValue) {
+            const normalizedOld = normalizeForComparison(oldValue);
+            const normalizedNew = normalizeForComparison(newValue);
+            
+            // Skip if both are null/empty/not set (no meaningful change)
+            if (!(normalizedOld === null && normalizedNew === null)) {
+              // Format values for display
+              const displayOld = normalizedOld === null ? 'Not set' : normalizedOld;
+              const displayNew = normalizedNew === null ? 'Not set' : normalizedNew;
+              
+              // Only log if old and new are actually different (skip "Not set" → "Not set")
+              if (displayOld !== displayNew) {
+                changes[field] = {
+                  old: displayOld,
+                  new: displayNew
+                };
+                
+                // Final safety check: remove if both are "Not set"
+                if (changes[field].old === 'Not set' && changes[field].new === 'Not set') {
+                  delete changes[field];
+                }
+              }
+            }
+          }
+        });
+        
+        // Track technical sections changes
+        if (JSON.stringify(currentEquipment.technical_sections) !== JSON.stringify(updatedEquipment.technical_sections)) {
+          changes['technical_sections'] = {
+            old: currentEquipment.technical_sections || 'No sections',
+            new: updatedEquipment.technical_sections || 'No sections'
+          };
+        }
+        
+        // Track custom fields changes
+        if (JSON.stringify(currentEquipment.custom_fields) !== JSON.stringify(updatedEquipment.custom_fields)) {
+          changes['custom_fields'] = {
+            old: currentEquipment.custom_fields || 'No custom fields',
+            new: updatedEquipment.custom_fields || 'No custom fields'
+          };
+        }
+        
+        // Log the changes if any (project_id is null for standalone equipment)
+        if (Object.keys(changes).length > 0) {
+          await logEquipmentUpdated(
+            null, // No project_id for standalone equipment
+            id,
+            updatedEquipment.type,
+            updatedEquipment.tag_number,
+            changes
+          );
+        }
+      }
+      
       return response.data;
     } catch (error: any) {
       console.error('❌ Error updating standalone equipment:', error);
@@ -1182,7 +1335,7 @@ export const fastAPI = {
     }
   },
 
-  // Create team position
+  // Create team position (for project equipment)
   async createTeamPosition(teamPositionData: any) {
     try {
       const response = await api.post('/equipment_team_positions', teamPositionData);
@@ -1190,6 +1343,40 @@ export const fastAPI = {
       return response.data;
     } catch (error: any) {
       console.error('❌ Error creating team position:', error);
+      throw error;
+    }
+  },
+
+  // Create standalone equipment team position
+  async createStandaloneTeamPosition(teamPositionData: any) {
+    try {
+      const response = await api.post('/standalone_equipment_team_positions', teamPositionData);
+      // console.log('✅ Standalone team position create API response:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Error creating standalone team position:', error);
+      throw error;
+    }
+  },
+
+  // Update standalone equipment team position
+  async updateStandaloneTeamPosition(id: string, teamPositionData: any) {
+    try {
+      const response = await api.patch(`/standalone_equipment_team_positions?id=eq.${id}`, teamPositionData);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Error updating standalone team position:', error);
+      throw error;
+    }
+  },
+
+  // Delete standalone equipment team position
+  async deleteStandaloneTeamPosition(id: string) {
+    try {
+      const response = await api.delete(`/standalone_equipment_team_positions?id=eq.${id}`);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Error deleting standalone team position:', error);
       throw error;
     }
   },
@@ -1238,6 +1425,10 @@ export const fastAPI = {
 
   // Project Members API functions
   async getProjectMembers(projectId: string) {
+    // Skip for standalone equipment (no project_id)
+    if (projectId === 'standalone') {
+      return [];
+    }
     try {
       // console.log('👥 Fetching project members for project ID:', projectId);
       const response = await api.get(`/project_members?project_id=eq.${projectId}&select=*&order=created_at.desc`);
@@ -1250,6 +1441,10 @@ export const fastAPI = {
   },
 
   async createProjectMember(memberData: any) {
+    // Skip for standalone equipment (no project_id)
+    if (memberData.project_id === 'standalone') {
+      throw new Error('Cannot create project member for standalone equipment. Use team_positions instead.');
+    }
     try {
       // console.log('👥 Creating project member:', memberData);
       const response = await api.post('/project_members', memberData, {
@@ -2667,6 +2862,95 @@ export const deleteEquipmentDocument = async (documentId: string) => {
   } catch (error: any) {
     console.error('❌ Error deleting equipment document:', error);
     throw new Error(error.response?.data?.message || 'Failed to delete equipment document');
+  }
+};
+
+// ============================================================================
+// STANDALONE EQUIPMENT DOCUMENTS FUNCTIONS
+// ============================================================================
+
+// Upload standalone equipment document
+export const uploadStandaloneEquipmentDocument = async (equipmentId: string, documentData: any) => {
+  try {
+    // console.log('📄 Uploading standalone equipment document for equipment:', equipmentId);
+    // console.log('📄 Document data:', documentData);
+    
+    const requestData = {
+      equipment_id: equipmentId,
+      document_name: documentData.name,
+      document_url: documentData.url,
+      document_type: documentData.equipmentType,
+      file_size: documentData.size,
+      uploaded_by: documentData.uploadedBy || null
+    };
+    
+    // Insert into standalone_equipment_documents table
+    const response = await axios.post(`${SUPABASE_URL}/rest/v1/standalone_equipment_documents`, requestData, {
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      }
+    });
+
+    // console.log('✅ Standalone equipment document uploaded successfully:', response.data);
+    return response.data;
+  } catch (error: any) {
+    console.error('❌ Error uploading standalone equipment document:', error);
+    console.error('❌ Error response:', error.response?.data);
+    console.error('❌ Error status:', error.response?.status);
+    throw new Error(error.response?.data?.message || 'Failed to upload standalone equipment document');
+  }
+};
+
+// Get standalone equipment documents for an equipment
+export const getStandaloneEquipmentDocuments = async (equipmentId: string) => {
+  try {
+    // console.log('📄 Fetching standalone equipment documents for equipment:', equipmentId);
+    
+    const response = await axios.get(`${SUPABASE_URL}/rest/v1/standalone_equipment_documents`, {
+      params: {
+        equipment_id: `eq.${equipmentId}`,
+        select: '*',
+        order: 'created_at.desc'
+      },
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+      }
+    });
+
+    // console.log('📄 Standalone equipment documents fetched:', response.data);
+    return response.data;
+  } catch (error: any) {
+    console.error('❌ Error fetching standalone equipment documents:', error);
+    console.error('❌ Error response:', error.response?.data);
+    console.error('❌ Error status:', error.response?.status);
+    return [];
+  }
+};
+
+// Delete standalone equipment document
+export const deleteStandaloneEquipmentDocument = async (documentId: string) => {
+  try {
+    // console.log('🗑️ Deleting standalone equipment document:', documentId);
+    
+    const response = await axios.delete(`${SUPABASE_URL}/rest/v1/standalone_equipment_documents`, {
+      params: {
+        id: `eq.${documentId}`
+      },
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+      }
+    });
+
+    // console.log('✅ Standalone equipment document deleted successfully');
+    return response.data;
+  } catch (error: any) {
+    console.error('❌ Error deleting standalone equipment document:', error);
+    throw new Error(error.response?.data?.message || 'Failed to delete standalone equipment document');
   }
 };
 

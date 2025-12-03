@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,118 +9,22 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Eye, Calendar, User, MapPin, ChevronLeft, ChevronRight, FileText, Users, Settings, TrendingUp, AlertTriangle, ClipboardCheck, Shield, Plus, Edit, Check, X, Camera, Upload, Clock, Building, Trash2, Mic, MicOff, Play, Pause, ChevronDown, Search } from "lucide-react";
+import { Eye, Calendar, User, MapPin, ChevronLeft, ChevronRight, FileText, Users, Settings, TrendingUp, AlertTriangle, ClipboardCheck, Shield, Plus, Edit, Check, X, Camera, Upload, Clock, Building, Trash2, Mic, MicOff, Play, Pause, ChevronDown, Search, ArrowLeft, Target, Wrench, BarChart3, Download, ArrowRight, Image, UserPlus, FileCheck } from "lucide-react";
 import AddEquipmentForm from "@/components/forms/AddEquipmentForm";
+import AddStandaloneEquipmentFormNew from "@/components/forms/AddStandaloneEquipmentFormNew";
 import AddTechnicalSectionModal from "@/components/forms/AddTechnicalSectionModal";
-import { fastAPI, getEquipmentDocuments, deleteEquipmentDocument, uploadEquipmentDocument } from "@/lib/api";
+import { fastAPI, getEquipmentDocuments, deleteEquipmentDocument, uploadEquipmentDocument, uploadStandaloneEquipmentDocument, getStandaloneEquipmentDocuments } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import { updateEquipment } from "@/lib/database";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { logProgressEntryAdded, logProgressEntryUpdated, logProgressEntryDeleted, logDocumentUploaded, logDocumentDeleted, logProgressImageUploaded, logTeamMemberAdded } from "@/lib/activityLogger";
+import { Equipment, ProgressEntry } from "@/types/equipment";
+import { transformEquipmentData } from "@/utils/equipmentTransform";
 import axios from "axios";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-interface ProgressEntry {
-  id: string;
-  type?: string;
-  entry_type?: string;
-  comment?: string;
-  entry_text?: string;
-  image?: string; // Base64 encoded image
-  image_url?: string; // Database field
-  imageDescription?: string;
-  image_description?: string; // Database field
-  audio?: string; // Base64 encoded audio file
-  audio_data?: string; // Database field
-  audioDuration?: number; // Audio duration in seconds
-  audio_duration?: number; // Database field
-  uploadedBy?: string;
-  created_by?: string; // Database field
-  uploadDate?: string;
-  created_at?: string; // Database field
-}
-
-// TechnicalSection interface removed - using new structure
-
-interface Equipment {
-  id: string;
-  name?: string;
-  type: string;
-  tagNumber: string;
-  jobNumber: string;
-  manufacturingSerial: string;
-  poCdd: string;
-  status: 'on-track' | 'delayed' | 'nearing-completion' | 'completed' | 'pending';
-  progress: number;
-  progressPhase: 'documentation' | 'manufacturing' | 'testing' | 'dispatched';
-  completionDate?: string;
-  location: string;
-  supervisor: string;
-  lastUpdate: string;
-  updated_at?: string; // Raw database timestamp for date inputs
-  images: string[];
-  progressImages: string[]; // Legacy field - will be removed
-  progressImagesMetadata?: Array<{
-    id: string;
-    image_url: string;
-    description: string;
-    uploaded_by: string;
-    upload_date: string;
-  }>; // Legacy field - will be removed
-  progressEntries: ProgressEntry[]; // New consolidated field
-  nextMilestone: string;
-  nextMilestoneDate?: string;
-  notes?: string;
-  priority: 'high' | 'medium' | 'low';
-  documents: File[];
-  isBasicInfo: boolean;
-  // Additional technical specifications
-  size?: string;
-  custom_fields?: Array<{ name: string, value: string }>;
-  technicalSections?: Array<{ name: string, customFields: Array<{ name: string, value: string }> }>;
-  teamCustomFields?: Array<{ name: string, value: string }>;
-  weight?: string;
-  designCode?: string;
-  material?: string;
-  workingPressure?: string;
-  designTemp?: string;
-  // Team positions with dynamic field names
-  welder?: string;
-  welderEmail?: string;
-  welderPhone?: string;
-  qcInspector?: string;
-  qcInspectorEmail?: string;
-  qcInspectorPhone?: string;
-  engineer?: string;
-  projectManager?: string;
-  projectManagerEmail?: string;
-  projectManagerPhone?: string;
-  supervisorEmail?: string;
-  supervisorPhone?: string;
-  supervisorRole?: 'editor' | 'viewer';
-  welderRole?: 'editor' | 'viewer';
-  qcInspectorRole?: 'editor' | 'viewer';
-  projectManagerRole?: 'editor' | 'viewer';
-  // Dynamic custom fields
-  customFields?: Array<{
-    id: string;
-    name: string;
-    value: string;
-  }>;
-  // Dynamic team positions
-  customTeamPositions?: Array<{
-    id: string;
-    position: string;
-    name: string;
-    email: string;
-    phone: string;
-    role: 'editor' | 'viewer';
-  }>;
-  certificationTitle?: string;
-}
 
 interface EquipmentGridProps {
   equipment: Equipment[];
@@ -130,9 +35,10 @@ interface EquipmentGridProps {
   onViewVDCR?: () => void;
   onUserAdded?: () => void; // Callback to refresh Settings tab
   onActivityUpdate?: () => void; // Callback to refresh Activity Logs
+  onViewingDetailsChange?: (isViewing: boolean) => void; // Callback to notify parent when viewing details
 }
 
-const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetails, onViewVDCR, onUserAdded, onActivityUpdate }: EquipmentGridProps) => {
+const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetails, onViewVDCR, onUserAdded, onActivityUpdate, onViewingDetailsChange }: EquipmentGridProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
   const [imageIndices, setImageIndices] = useState<Record<string, number>>({});
@@ -175,6 +81,265 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
   const [customProgressTypeName, setCustomProgressTypeName] = useState('');
   const [customProgressTypes, setCustomProgressTypes] = useState<string[]>([]);
 
+  // Equipment details view state
+  const [viewingEquipmentId, setViewingEquipmentId] = useState<string | null>(null);
+  
+  // Tab state for equipment details view
+  const [equipmentDetailsTab, setEquipmentDetailsTab] = useState("equipment-details");
+
+  // Equipment Logs and Settings states (for standalone equipment details view)
+  const [equipmentSearchQuery, setEquipmentSearchQuery] = useState("");
+  const [equipmentProgressEntries, setEquipmentProgressEntries] = useState<any[]>([]);
+  const [isLoadingEquipmentLogs, setIsLoadingEquipmentLogs] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [teamMembersLoading, setTeamMembersLoading] = useState(false);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [showEditMember, setShowEditMember] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<any>(null);
+  const [newMember, setNewMember] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    position: "",
+    role: "",
+    permissions: [] as string[],
+    equipmentAssignments: [] as string[],
+    dataAccess: [] as string[],
+    accessLevel: "viewer"
+  });
+  const [existingFirmMembers, setExistingFirmMembers] = useState<any[]>([]);
+  const [isLoadingExistingMembers, setIsLoadingExistingMembers] = useState(false);
+  const [selectedExistingMemberEmail, setSelectedExistingMemberEmail] = useState<string>("");
+  const [isExistingMemberMode, setIsExistingMemberMode] = useState(false);
+
+  // Load equipment activity logs for the viewing equipment
+  const loadEquipmentActivityLogs = useCallback(async () => {
+    if (!viewingEquipmentId || projectId !== 'standalone') return;
+    
+    try {
+      setIsLoadingEquipmentLogs(true);
+      const { activityApi } = await import('@/lib/activityApi');
+      // Use standalone equipment activity logs API
+      const entries = await activityApi.getStandaloneEquipmentActivityLogsByEquipment(viewingEquipmentId);
+      setEquipmentProgressEntries(entries as any[]);
+    } catch (error) {
+      console.error('Error loading standalone equipment activity logs:', error);
+      setEquipmentProgressEntries([]);
+    } finally {
+      setIsLoadingEquipmentLogs(false);
+    }
+  }, [viewingEquipmentId, projectId]);
+
+  // Fetch team members for the viewing equipment
+  const fetchEquipmentTeamMembers = useCallback(async () => {
+    if (!viewingEquipmentId || projectId !== 'standalone') {
+      console.log('⏭️ Skipping fetchEquipmentTeamMembers:', { viewingEquipmentId, projectId });
+      return;
+    }
+    
+    try {
+      console.log('🔄 Fetching team members for equipment:', viewingEquipmentId);
+      setTeamMembersLoading(true);
+      // For standalone equipment, get team members from standalone_equipment_team_positions table
+      const { DatabaseService } = await import('@/lib/database');
+      const teamData = await DatabaseService.getStandaloneTeamPositions(viewingEquipmentId);
+      console.log('📥 Raw team data received:', teamData);
+      
+      const transformedMembers = (teamData as any[]).map((member, index) => ({
+        id: member.id || `member-${index}`,
+        name: member.person_name || 'Unknown',
+        email: member.email || '',
+        phone: member.phone || '',
+        position: member.position_name || '',
+        role: member.role || 'viewer',
+        permissions: getPermissionsByRole(member.role || 'viewer'),
+        status: 'active',
+        avatar: (member.person_name || 'U').split(' ').map((n: string) => n[0]).join('').toUpperCase(),
+        lastActive: 'Unknown',
+        equipmentAssignments: [viewingEquipmentId],
+        dataAccess: getDataAccessByRole(member.role || 'viewer'),
+        accessLevel: member.role || 'viewer'
+      }));
+      
+      console.log('✅ Transformed team members:', transformedMembers);
+      setTeamMembers(transformedMembers);
+      console.log('✅ Team members state updated, count:', transformedMembers.length);
+    } catch (error) {
+      console.error('❌ Error fetching equipment team members:', error);
+      setTeamMembers([]);
+    } finally {
+      setTeamMembersLoading(false);
+    }
+  }, [viewingEquipmentId, projectId]);
+
+  // Helper function for permissions
+  const getPermissionsByRole = (role: string) => {
+    const rolePermissions: Record<string, string[]> = {
+      'firm_admin': ['view', 'edit', 'delete', 'manage_team', 'approve_vdcr', 'manage_equipment'],
+      'project_manager': ['view', 'edit', 'delete', 'manage_team', 'approve_vdcr', 'manage_equipment'],
+      'vdcr_manager': ['view', 'edit', 'approve_vdcr', 'manage_vdcr'],
+      'design_engineer': ['view', 'edit', 'manage_equipment'],
+      'quality_inspector': ['view', 'comment'],
+      'welder': ['view'],
+      'editor': ['view', 'edit', 'manage_equipment'],
+      'viewer': ['view']
+    };
+    return rolePermissions[role] || ['view'];
+  };
+
+  // Helper function for data access by role
+  const getDataAccessByRole = (role: string) => {
+    const roleAccess: Record<string, string[]> = {
+      'firm_admin': ['Full Company Access', 'Can Edit All Data', 'Manage All Projects'],
+      'project_manager': ['Full Equipment Access', 'Can Manage All Equipment', 'Can Approve VDCR', 'Can Manage Team Members', 'Access to All Tabs'],
+      'vdcr_manager': ['VDCR Management Access', 'Can Approve VDCR', 'Can View All Equipment', 'Access to VDCR & Equipment Tabs', 'No Access to Settings'],
+      'design_engineer': ['Assigned Equipment Only', 'Can Add Progress Images', 'Can Add Progress Entries', 'Access to VDCR & Other Tabs', 'No Access to Settings & Project Details'],
+      'quality_inspector': ['Assigned Equipment Only', 'Read-Only Access', 'Cannot Edit Data', 'Access to VDCR & Other Tabs', 'No Access to Settings & Project Details'],
+      'welder': ['Assigned Equipment Only', 'Read-Only Access', 'Cannot Edit Data'],
+      'editor': ['Assigned Equipment Only', 'Can Add Progress Images', 'Can Add Progress Entries', 'Access to VDCR & Other Tabs', 'No Access to Settings'],
+      'viewer': ['Read-Only Access', 'Can View Assigned Equipment', 'Can View Progress & VDCR', 'No Edit Permissions', 'No Access to Settings']
+    };
+    return roleAccess[role] || ['Read-Only Access'];
+  };
+
+  // Fetch existing firm members for dropdown
+  const fetchExistingFirmMembers = useCallback(async () => {
+    try {
+      setIsLoadingExistingMembers(true);
+      const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+      const firmId = userData.firm_id;
+      
+      if (!firmId) {
+        setExistingFirmMembers([]);
+        return;
+      }
+
+      const members = await fastAPI.getAllFirmTeamMembers(firmId);
+      setExistingFirmMembers(members || []);
+    } catch (error) {
+      console.error('Error fetching existing firm members:', error);
+      setExistingFirmMembers([]);
+    } finally {
+      setIsLoadingExistingMembers(false);
+    }
+  }, []);
+
+  // Helper functions
+  const mapRoleToDisplay = (dbRole: string): string => {
+    const roleMap: Record<string, string> = {
+      'project_manager': 'Project Manager',
+      'vdcr_manager': 'VDCR Manager',
+      'editor': 'Editor',
+      'viewer': 'Viewer'
+    };
+    return roleMap[dbRole] || dbRole;
+  };
+
+  const getRoleColor = (role: string) => {
+    const roleColors: Record<string, string> = {
+      'project_manager': 'bg-purple-100 text-purple-800',
+      'vdcr_manager': 'bg-teal-100 text-teal-800',
+      'editor': 'bg-blue-100 text-blue-800',
+      'viewer': 'bg-gray-100 text-gray-800',
+      'design_engineer': 'bg-purple-100 text-purple-800',
+      'quality_engineer': 'bg-green-100 text-green-800',
+      'client_representative': 'bg-orange-100 text-orange-800',
+      'firm_admin': 'bg-red-100 text-red-800'
+    };
+    return roleColors[role] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getPermissionLabel = (permission: string) => {
+    const labels: Record<string, string> = {
+      view: "View",
+      edit: "Edit",
+      delete: "Delete",
+      manage_team: "Manage Team",
+      approve_vdcr: "Approve VDCR",
+      manage_equipment: "Manage Equipment",
+      comment: "Comment"
+    };
+    return labels[permission] || permission;
+  };
+
+  // Load logs and team members when viewing equipment details
+  useEffect(() => {
+    if (viewingEquipmentId && projectId === 'standalone') {
+      loadEquipmentActivityLogs();
+      fetchEquipmentTeamMembers();
+    }
+  }, [viewingEquipmentId, projectId, loadEquipmentActivityLogs, fetchEquipmentTeamMembers]);
+
+  // Fetch existing firm members when add member modal opens
+  useEffect(() => {
+    if (showAddMember) {
+      fetchExistingFirmMembers();
+    }
+  }, [showAddMember, fetchExistingFirmMembers]);
+
+  const [roles] = useState([
+    {
+      name: "project_manager",
+      displayName: "Project Manager",
+      permissions: ["view", "edit", "delete", "manage_team", "approve_vdcr", "manage_equipment"],
+      color: "bg-purple-100 text-purple-800"
+    },
+    {
+      name: "vdcr_manager",
+      displayName: "VDCR Manager",
+      permissions: ["view", "edit", "approve_vdcr", "manage_vdcr"],
+      color: "bg-teal-100 text-teal-800"
+    },
+    {
+      name: "editor",
+      displayName: "Editor",
+      permissions: ["view", "edit", "manage_equipment"],
+      color: "bg-blue-100 text-blue-800"
+    },
+    {
+      name: "viewer",
+      displayName: "Viewer",
+      permissions: ["view"],
+      color: "bg-gray-100 text-gray-800"
+    }
+  ]);
+
+  // Load equipment activity logs for the viewing equipment
+  const loadEquipmentProgressEntries = useCallback(async () => {
+    if (!viewingEquipmentId || projectId !== 'standalone') return;
+    try {
+      setIsLoadingEquipmentLogs(true);
+      const { activityApi } = await import('@/lib/activityApi');
+      // Use standalone equipment activity logs API
+      const entries = await activityApi.getStandaloneEquipmentActivityLogsByEquipment(viewingEquipmentId);
+      setEquipmentProgressEntries(entries as any[]);
+    } catch (error) {
+      console.error('Error loading standalone equipment activity logs:', error);
+    } finally {
+      setIsLoadingEquipmentLogs(false);
+    }
+  }, [viewingEquipmentId, projectId]);
+
+
+  // Notify parent when viewing details changes
+  useEffect(() => {
+    if (onViewingDetailsChange) {
+      const isViewing = viewingEquipmentId !== null && projectId === 'standalone';
+      onViewingDetailsChange(isViewing);
+    }
+  }, [viewingEquipmentId, projectId, onViewingDetailsChange]);
+
+  // Load equipment logs and team members when viewing equipment details
+  useEffect(() => {
+    if (viewingEquipmentId && projectId === 'standalone') {
+      if (equipmentDetailsTab === 'equipment-logs') {
+        loadEquipmentProgressEntries();
+      }
+        if (equipmentDetailsTab === 'settings') {
+          fetchEquipmentTeamMembers();
+        }
+      }
+    }, [viewingEquipmentId, projectId, equipmentDetailsTab, loadEquipmentProgressEntries, fetchEquipmentTeamMembers]);
 
   // Audio recording state
   const [isRecording, setIsRecording] = useState(false);
@@ -300,85 +465,12 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
     return hasProgressImages || hasProgressEntries || hasTechnicalSections || hasCustomFields || hasTeamCustomFields;
   };
 
-  // Transform database fields to frontend fields
-  const transformEquipmentData = useCallback((dbEquipment: any[]): Equipment[] => {
-    return dbEquipment.map((eq: any) => {
-      // PERFORMANCE: Console logs commented out - uncomment if needed for debugging
-      // console.log('🔍 Raw equipment data:', eq);
-      // console.log('🔍 Custom fields from DB:', eq.custom_fields);
-      // console.log('🔍 Custom fields type:', typeof eq.custom_fields);
-      // console.log('🔍 Custom fields length:', eq.custom_fields?.length);
-
-      return {
-        id: eq.id,
-        name: eq.name || '',
-        type: eq.type || '',
-        tagNumber: eq.tag_number || '',
-        jobNumber: eq.job_number || '',
-        manufacturingSerial: eq.manufacturing_serial || '',
-        poCdd: eq.po_cdd || 'To be scheduled',
-        status: eq.status || 'pending',
-        progress: eq.progress || 0,
-        progressPhase: eq.progress_phase || 'documentation',
-        completionDate: eq.completion_date || 'No deadline set',
-        location: eq.location || 'Not Assigned',
-        supervisor: eq.supervisor || '',
-        lastUpdate: eq.updated_at ? new Date(eq.updated_at).toLocaleDateString() : new Date().toLocaleDateString(),
-        updated_at: eq.updated_at || undefined, // Store raw timestamp for date inputs
-        images: eq.images || [],
-        progressImages: eq.progress_images || [], // Main progress images (top section)
-        progressImagesMetadata: eq.progress_images_metadata || [], // Main progress images metadata
-        progressEntries: eq.progress_entries || [], // Progress entries from equipment_progress_entries table (updates tab)
-        nextMilestone: eq.next_milestone || 'Initial Setup',
-        nextMilestoneDate: eq.next_milestone_date,
-        notes: eq.notes,
-        priority: eq.priority || 'medium',
-        documents: eq.documents || [],
-        isBasicInfo: eq.is_basic_info || true,
-        // Technical specifications
-        size: eq.size || '',
-        weight: eq.weight || '',
-        designCode: eq.design_code || '',
-        material: eq.material || '',
-        workingPressure: eq.working_pressure || '',
-        designTemp: eq.design_temp || '',
-        // Team positions
-        welder: eq.welder || '',
-        welderEmail: eq.welder_email || '',
-        welderPhone: eq.welder_phone || '',
-        qcInspector: eq.qc_inspector || '',
-        qcInspectorEmail: eq.qc_inspector_email || '',
-        qcInspectorPhone: eq.qc_inspector_phone || '',
-        projectManager: eq.project_manager || '',
-        projectManagerEmail: eq.project_manager_email || '',
-        projectManagerPhone: eq.project_manager_phone || '',
-        supervisorEmail: eq.supervisor_email || '',
-        supervisorPhone: eq.supervisor_phone || '',
-        supervisorRole: eq.supervisor_role || 'viewer',
-        welderRole: eq.welder_role || 'viewer',
-        qcInspectorRole: eq.qc_inspector_role || 'viewer',
-        projectManagerRole: eq.project_manager_role || 'viewer',
-        certificationTitle: eq.certification_title || '',
-        // Dynamic team positions
-        customTeamPositions: eq.custom_team_positions || [],
-        // Custom fields
-        custom_fields: eq.custom_fields || [],
-        // Transform custom fields from database
-        customFields: eq.custom_fields || [],
-        // Technical sections
-        technicalSections: (() => {
-          // console.log('🔍 Raw technical_sections from DB:', eq.technical_sections);
-          // console.log('🔍 Type of technical_sections:', typeof eq.technical_sections);
-          // console.log('🔍 Length of technical_sections:', eq.technical_sections?.length);
-          return eq.technical_sections || [];
-        })(),
-        // Team custom fields
-        teamCustomFields: eq.team_custom_fields || []
-      };
-    });
+  // Transform database fields to frontend fields - using shared utility
+  const transformEquipmentDataCallback = useCallback((dbEquipment: any[]): Equipment[] => {
+    return transformEquipmentData(dbEquipment);
   }, []); // Memoized with empty dependencies (pure function)
 
-  const [localEquipment, setLocalEquipment] = useState<Equipment[]>(transformEquipmentData(equipment));
+  const [localEquipment, setLocalEquipment] = useState<Equipment[]>(transformEquipmentDataCallback(equipment));
   const [imageMetadata, setImageMetadata] = useState<Record<string, Array<{ id: string, description: string, uploadedBy: string, uploadDate: string }>>>({});
 
   // Load custom progress types from existing entries
@@ -511,7 +603,18 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
     if (equipment && equipment.length > 0) {
       // PERFORMANCE: Console logs commented out - uncomment if needed for debugging
       // console.log('🔄 Equipment data received:', equipment);
-      const transformedEquipment = transformEquipmentData(equipment);
+      const transformedEquipment = transformEquipmentDataCallback(equipment);
+      
+      // Post-process: For standalone equipment, ensure status is 'active' (not 'pending')
+      // This handles both new equipment (which should already be 'active') and old equipment
+      if (projectId === 'standalone') {
+        transformedEquipment.forEach((eq: Equipment) => {
+          if (eq.status === 'pending' || !eq.status) {
+            eq.status = 'active';
+          }
+        });
+      }
+      
       // console.log('🔄 Transformed equipment:', transformedEquipment);
       setLocalEquipment(transformedEquipment);
 
@@ -928,7 +1031,17 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
 
       // Ensure freshEquipment is an array
       const equipmentArray = Array.isArray(freshEquipment) ? freshEquipment : [];
-      const transformedEquipment = transformEquipmentData(equipmentArray);
+      const transformedEquipment = transformEquipmentDataCallback(equipmentArray);
+      
+      // Post-process: For standalone equipment, ensure status is 'active' (not 'pending')
+      // This handles both new equipment (which should already be 'active') and old equipment
+      if (projectId === 'standalone') {
+        transformedEquipment.forEach((eq: Equipment) => {
+          if (eq.status === 'pending' || !eq.status) {
+            eq.status = 'active';
+          }
+        });
+      }
 
       // Debug transformed data (commented for performance)
       // transformedEquipment.forEach((eq: any, index: number) => {
@@ -1001,7 +1114,10 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
       // console.log('📄 Fetching documents for equipment:', equipmentId);
       setDocumentsLoading(prev => ({ ...prev, [equipmentId]: true }));
 
-      const equipmentDocs = await getEquipmentDocuments(equipmentId);
+      // Use appropriate API based on whether it's standalone or project equipment
+      const equipmentDocs = projectId === 'standalone' 
+        ? await getStandaloneEquipmentDocuments(equipmentId)
+        : await getEquipmentDocuments(equipmentId);
 
       if (equipmentDocs && Array.isArray(equipmentDocs) && equipmentDocs.length > 0) {
         // console.log('📄 Found equipment documents:', equipmentDocs);
@@ -1013,7 +1129,8 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
           document_name: doc.document_name,
           document_url: doc.document_url,
           uploadedBy: doc.uploaded_by || 'Unknown',
-          uploadDate: doc.upload_date || doc.created_at
+          uploadDate: doc.upload_date || doc.created_at,
+          document_type: doc.document_type || 'Equipment Document'
         })) : [];
 
         setDocuments(prev => ({
@@ -1047,6 +1164,13 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
       });
     }
   }, [equipment]);
+
+  // Fetch documents when viewing equipment details
+  useEffect(() => {
+    if (viewingEquipmentId && projectId === 'standalone') {
+      fetchEquipmentDocuments(viewingEquipmentId);
+    }
+  }, [viewingEquipmentId, projectId]);
 
   // Function to handle docs tab click and fetch documents
   const handleDocsTabClick = (equipmentId: string) => {
@@ -1378,7 +1502,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         // console.log('🗑️ Deleting equipment:', equipment.id);
 
         // Call backend API to delete equipment
-        await fastAPI.deleteEquipment(equipment.id);
+          await fastAPI.deleteEquipment(equipment.id);
 
         // Remove the equipment from the local array
         setLocalEquipment(prev => prev.filter(eq => eq.id !== equipment.id));
@@ -1806,8 +1930,8 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
       // console.log('💾 Saving progress entry to database...');
       
       if (!editingProgressEntryId) {
-        // Create new progress entry in equipment_progress_entries table
-        const createdEntry = await fastAPI.createProgressEntry({
+        // Create new progress entry - use appropriate table based on equipment type
+        const entryData = {
           equipment_id: equipmentId,
           entry_text: newProgressEntry,
           entry_type: newProgressType,
@@ -1816,7 +1940,11 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
           image_url: imageBase64,
           image_description: imageDescription,
           created_by: user?.id
-        });
+        };
+        
+        const createdEntry = projectId === 'standalone'
+          ? await fastAPI.createStandaloneProgressEntry(entryData)
+          : await fastAPI.createProgressEntry(entryData);
         // console.log('✅ Progress entry created in database:', createdEntry);
         
         // Log activity - Progress Entry Added
@@ -1861,15 +1989,21 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
           });
         }
       } else {
-        // Update existing progress entry in equipment_progress_entries table
-        await fastAPI.updateProgressEntry(editingProgressEntryId, {
+        // Update existing progress entry - use appropriate table based on equipment type
+        const updateData = {
           entry_text: newProgressEntry,
           entry_type: newProgressType,
           audio_data: audioBase64,
           audio_duration: audioDuration,
           image_url: imageBase64,
           image_description: imageDescription
-        });
+        };
+        
+        if (projectId === 'standalone') {
+          await fastAPI.updateStandaloneProgressEntry(editingProgressEntryId, updateData);
+        } else {
+          await fastAPI.updateProgressEntry(editingProgressEntryId, updateData);
+        }
         // console.log('✅ Progress entry updated in database');
         
         // Log activity - Progress Entry Updated
@@ -2048,10 +2182,12 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         : eq
     ));
 
-    // Update database
+    // Update database - use appropriate table based on equipment type
     try {
       // console.log('🔄 Deleting progress entry from database...');
-      const result = await fastAPI.deleteProgressEntry(entryId);
+      const result = projectId === 'standalone'
+        ? await fastAPI.deleteStandaloneProgressEntry(entryId)
+        : await fastAPI.deleteProgressEntry(entryId);
       // console.log('✅ Progress entry deleted successfully:', result);
 
       // Log activity - Progress Entry Deleted
@@ -2123,23 +2259,23 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
       // console.log('👥 Adding team member to project_members table...');
 
       // Create member data for project_members table
-      const memberData = {
-        project_id: projectId,
-        name: newTeamName?.trim(),
-        email: newTeamEmail?.trim() || null,
-        phone: newTeamPhone?.trim() || null,
-        position: newTeamPosition?.trim(),
-        role: newTeamRole,
-        permissions: ['view', 'edit'],
-        status: 'active',
-        equipment_assignments: [equipmentId], // Assign to this equipment
-        data_access: ['equipment', 'documents', 'progress'],
-        access_level: newTeamRole
-      };
+        const memberData = {
+          project_id: projectId,
+          name: newTeamName?.trim(),
+          email: newTeamEmail?.trim() || null,
+          phone: newTeamPhone?.trim() || null,
+          position: newTeamPosition?.trim(),
+          role: newTeamRole,
+          permissions: ['view', 'edit'],
+          status: 'active',
+          equipment_assignments: [equipmentId], // Assign to this equipment
+          data_access: ['equipment', 'documents', 'progress'],
+          access_level: newTeamRole
+        };
 
       // Save to project_members table
-      const createdMember = await fastAPI.createProjectMember(memberData);
-      // console.log('✅ Team member created in project_members table:', createdMember);
+        const createdMember = await fastAPI.createProjectMember(memberData);
+        // console.log('✅ Team member created in project_members table:', createdMember);
 
       // Get equipment info for logging
       const currentEquipment = localEquipment.find(eq => eq.id === equipmentId);
@@ -2237,10 +2373,10 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
   };
 
   const removeTeamPosition = (equipmentId: string, positionId: string) => {
-    setTeamPositions(prev => ({
-      ...prev,
-      [equipmentId]: prev[equipmentId]?.filter(pos => pos.id !== positionId) || []
-    }));
+      setTeamPositions(prev => ({
+        ...prev,
+        [equipmentId]: prev[equipmentId]?.filter(pos => pos.id !== positionId) || []
+      }));
   };
 
   // Custom fields functions
@@ -2970,6 +3106,265 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
     }
   };
 
+  const handleAddStandaloneEquipment = async (formData: any) => {
+    try {
+      const { equipmentDetails, ...baseFormData } = formData;
+      const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFtbWFvc21rZ3drYW1mamhjeGlrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjYyNzU4NywiZXhwIjoyMDcyMjAzNTg3fQ.PVg3nnfYEBnqpceBXJjnZJIc9lwjmW1G7Lo2U7t0ehk';
+      const createdEquipmentIds: string[] = [];
+
+      // Process each equipment unit from equipmentDetails
+      if (equipmentDetails && Object.keys(equipmentDetails).length > 0) {
+        for (const [equipmentType, equipmentUnits] of Object.entries(equipmentDetails)) {
+          const units = equipmentUnits as Array<{
+            id: string;
+            tagNumber: string;
+            jobNumber: string;
+            manufacturingSerial: string;
+            size: string;
+            material: string;
+            designCode: string;
+            documents: File[];
+          }>;
+
+          for (const unit of units) {
+            // Prepare equipment data with all form fields
+            const equipmentData: any = {
+              type: equipmentType,
+              tag_number: unit.tagNumber || '',
+              name: equipmentType,
+              job_number: unit.jobNumber || '',
+              manufacturing_serial: unit.manufacturingSerial || '',
+              // Step 1: Equipment Information
+              size: unit.size || baseFormData.size || '',
+              material: unit.material || baseFormData.material || '',
+              design_code: unit.designCode || baseFormData.designCode || '',
+              // Step 2: Basic Information
+              client_name: baseFormData.clientName || '',
+              plant_location: baseFormData.plantLocation || '',
+              po_number: baseFormData.poNumber || '',
+              sales_order_date: baseFormData.salesOrderDate || '',
+              completion_date: baseFormData.completionDate || '',
+              client_industry: baseFormData.clientIndustry || '',
+              equipment_manager: baseFormData.equipmentManager || '',
+              consultant: baseFormData.consultant || '',
+              tpi_agency: baseFormData.tpiAgency || '',
+              client_focal_point: baseFormData.clientFocalPoint || '',
+              // Step 3: Scope & Documents
+              services_included: baseFormData.servicesIncluded || {},
+              scope_description: baseFormData.scopeDescription || '',
+              kickoff_meeting_notes: baseFormData.kickoffMeetingNotes || '',
+              special_production_notes: baseFormData.specialProductionNotes || '',
+              // Default values
+              status: 'active',
+              progress: 0,
+              progress_phase: 'documentation',
+              location: baseFormData.plantLocation || 'Not Assigned',
+              next_milestone: 'Initial Setup',
+              priority: 'medium',
+              is_basic_info: false,
+              progress_images: [],
+              po_cdd: baseFormData.poNumber || 'To be scheduled',
+              // Store additional data in custom_fields
+              custom_fields: [
+                { name: 'Client Name', value: baseFormData.clientName || '' },
+                { name: 'Plant Location', value: baseFormData.plantLocation || '' },
+                { name: 'PO Number', value: baseFormData.poNumber || '' },
+                { name: 'Sales Order Date', value: baseFormData.salesOrderDate || '' },
+                { name: 'Completion Date', value: baseFormData.completionDate || '' },
+                { name: 'Client Industry', value: baseFormData.clientIndustry || '' },
+                { name: 'Equipment Manager', value: baseFormData.equipmentManager || '' },
+                { name: 'Consultant', value: baseFormData.consultant || '' },
+                { name: 'TPI Agency', value: baseFormData.tpiAgency || '' },
+                { name: 'Client Focal Point', value: baseFormData.clientFocalPoint || '' },
+                { name: 'Scope Description', value: baseFormData.scopeDescription || '' },
+                { name: 'Kickoff Meeting Notes', value: baseFormData.kickoffMeetingNotes || '' },
+                { name: 'Special Production Notes', value: baseFormData.specialProductionNotes || '' }
+              ]
+            };
+
+            // Remove undefined values and project-specific fields that don't exist in standalone_equipment table
+            const invalidFields = ['project_manager', 'supervisor', 'welder', 'qc_inspector', 'project_id', 'firm_id'];
+            Object.keys(equipmentData).forEach(key => {
+              if (equipmentData[key] === undefined || invalidFields.includes(key)) {
+                delete equipmentData[key];
+              }
+            });
+
+            // Create the equipment
+            const createdEquipmentResponse = await fastAPI.createStandaloneEquipment(equipmentData);
+            const createdEquipment = Array.isArray(createdEquipmentResponse) ? createdEquipmentResponse[0] : createdEquipmentResponse;
+            const equipmentId = createdEquipment?.id;
+            
+            if (equipmentId) {
+              createdEquipmentIds.push(equipmentId);
+            }
+
+            // Upload equipment documents if any
+            if (equipmentId && unit.documents && unit.documents.length > 0) {
+              console.log(`📄 Uploading ${unit.documents.length} equipment document(s) for equipment: ${equipmentType} - ${unit.tagNumber}`);
+              
+              for (let i = 0; i < unit.documents.length; i++) {
+                const file = unit.documents[i];
+                try {
+                  // Upload file to Supabase Storage with proper folder structure
+                  // Path: standalone-equipment/{equipment_id}/{file_name}
+                  const fileName = `standalone-equipment/${equipmentId}/${Date.now()}_${file.name}`;
+                  
+                  // Create FormData
+                  const formDataUpload = new FormData();
+                  formDataUpload.append('file', file);
+                  
+                  // Upload to standalone-equipment-documents bucket
+                  const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFtbWFvc21rZ3drYW1mamhjeGlrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjYyNzU4NywiZXhwIjoyMDcyMjAzNTg3fQ.PVg3nnfYEBnqpceBXJjnZJIc9lwjmW1G7Lo2U7t0ehk';
+                  
+                  const uploadResponse = await axios.post(
+                    `${SUPABASE_URL}/storage/v1/object/standalone-equipment-documents/${fileName}`,
+                    formDataUpload,
+                    {
+                      headers: {
+                        'Authorization': `Bearer ${SERVICE_ROLE_KEY}`,
+                        'apikey': SERVICE_ROLE_KEY,
+                        'Content-Type': 'multipart/form-data'
+                      }
+                    }
+                  );
+                  
+                  if (uploadResponse.status === 200) {
+                    // Get public URL
+                    const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/standalone-equipment-documents/${fileName}`;
+                    
+                    // Create document record in database
+                    const documentData = {
+                      name: file.name,
+                      url: publicUrl,
+                      uploadedBy: user?.id || null,
+                      size: file.size,
+                      mimeType: file.type,
+                      equipmentType: 'Equipment Document'
+                    };
+                    
+                    await uploadStandaloneEquipmentDocument(equipmentId, documentData);
+                    console.log(`✅ Equipment document ${i + 1} uploaded successfully: ${file.name}`);
+                  } else {
+                    console.error(`❌ Failed to upload equipment document ${i + 1}:`, uploadResponse.status);
+                  }
+                } catch (docError: any) {
+                  console.error(`❌ Error uploading equipment document ${i + 1} (${file.name}):`, docError);
+                  // Continue with other documents even if one fails
+                }
+              }
+            }
+
+          }
+        }
+      }
+
+      // Upload Core Documents (Unpriced PO, Design Inputs, Client Reference, Other Documents)
+      // Upload these documents to all created equipment items
+      if (createdEquipmentIds.length > 0 && baseFormData) {
+        // Helper function to upload a single document to a specific equipment
+        const uploadCoreDocument = async (file: File, documentType: string, equipmentId: string) => {
+          try {
+            const fileName = `standalone-equipment/${equipmentId}/Core Documents/${documentType}/${Date.now()}_${file.name}`;
+            
+            const formDataUpload = new FormData();
+            formDataUpload.append('file', file);
+            
+            const uploadResponse = await axios.post(
+              `${SUPABASE_URL}/storage/v1/object/standalone-equipment-documents/${fileName}`,
+              formDataUpload,
+              {
+                headers: {
+                  'Authorization': `Bearer ${SERVICE_ROLE_KEY}`,
+                  'apikey': SERVICE_ROLE_KEY,
+                  'Content-Type': 'multipart/form-data'
+                }
+              }
+            );
+            
+            if (uploadResponse.status === 200) {
+              const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/standalone-equipment-documents/${fileName}`;
+              
+              const documentData = {
+                name: file.name,
+                url: publicUrl,
+                uploadedBy: user?.id || null,
+                size: file.size,
+                mimeType: file.type,
+                equipmentType: documentType
+              };
+              
+              await uploadStandaloneEquipmentDocument(equipmentId, documentData);
+              console.log(`✅ ${documentType} uploaded successfully for equipment ${equipmentId}: ${file.name}`);
+              return true;
+            } else {
+              console.error(`❌ Failed to upload ${documentType} for equipment ${equipmentId}:`, uploadResponse.status);
+              return false;
+            }
+          } catch (error: any) {
+            console.error(`❌ Error uploading ${documentType} (${file.name}) for equipment ${equipmentId}:`, error);
+            return false;
+          }
+        };
+
+        // Upload core documents to all created equipment items
+        for (const equipmentId of createdEquipmentIds) {
+          // Upload Unpriced PO File
+          if (baseFormData.unpricedPOFile) {
+            await uploadCoreDocument(baseFormData.unpricedPOFile, 'Unpriced PO File', equipmentId);
+          }
+
+          // Upload Design Inputs/PID
+          if (baseFormData.designInputsPID) {
+            await uploadCoreDocument(baseFormData.designInputsPID, 'Design Inputs PID', equipmentId);
+          }
+
+          // Upload Client Reference Document
+          if (baseFormData.clientReferenceDoc) {
+            await uploadCoreDocument(baseFormData.clientReferenceDoc, 'Client Reference Doc', equipmentId);
+          }
+
+          // Upload Other Documents (multiple files)
+          if (baseFormData.otherDocuments && Array.isArray(baseFormData.otherDocuments) && baseFormData.otherDocuments.length > 0) {
+            for (const file of baseFormData.otherDocuments) {
+              await uploadCoreDocument(file, 'Other Documents', equipmentId);
+            }
+          }
+        }
+      }
+
+      // Refresh equipment data
+      await refreshEquipmentData();
+
+      setShowAddEquipmentForm(false);
+
+      toast({ 
+        title: 'Success', 
+        description: 'Standalone equipment added successfully!' 
+      });
+    } catch (error: any) {
+      console.error('❌ Error creating standalone equipment:', error);
+      const errorMessage = error?.message || 'Failed to add equipment. Please try again.';
+      
+      if (errorMessage.includes('already exists') || errorMessage.includes('unique') || errorMessage.includes('Cannot create')) {
+        toast({ 
+          title: 'Validation Error', 
+          description: errorMessage,
+          variant: 'destructive',
+          duration: 5000
+        });
+      } else {
+        toast({ 
+          title: 'Error', 
+          description: errorMessage,
+          variant: 'destructive' 
+        });
+      }
+      
+      throw error;
+    }
+  };
+
   const handleAddEquipment = async (newEquipment: any) => {
     // console.log('New equipment added:', newEquipment);
 
@@ -2982,16 +3377,19 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
       const jobNumber = newEquipment.jobNumber || '';
       const manufacturingSerial = newEquipment.manufacturingSerial || newEquipment.serialNumber || '';
 
+      // Check if this is standalone equipment
+      const isStandalone = projectId === 'standalone';
+
       // Prepare equipment data for API call with proper field mapping
-      const equipmentData = {
-        project_id: projectId,
+      const equipmentData: any = {
         type: newEquipment.type,
         tag_number: tagNumber,
         name: newEquipment.name,
         job_number: jobNumber,
         manufacturing_serial: manufacturingSerial,
         po_cdd: 'To be scheduled',
-        status: 'pending',
+        // Standalone equipment should be 'active' when created, project equipment should be 'pending'
+        status: isStandalone ? 'active' : 'pending',
         progress: 0,
         progress_phase: 'documentation',
         location: 'Not Assigned',
@@ -3021,6 +3419,11 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         ]
       };
 
+      // Only add project_id for non-standalone equipment
+      if (!isStandalone) {
+        equipmentData.project_id = projectId;
+      }
+
       // Remove undefined values
       Object.keys(equipmentData).forEach(key => {
         if (equipmentData[key] === undefined) {
@@ -3035,8 +3438,11 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
       //   manufacturing_serial: manufacturingSerial
       // });
 
-      // Call API to create equipment (validates uniqueness globally)
-      const createdEquipment = await fastAPI.createEquipment(equipmentData);
+      // Call appropriate API based on equipment type
+      // Standalone equipment uses createStandaloneEquipment, project equipment uses createEquipment
+      const createdEquipment = isStandalone 
+        ? await fastAPI.createStandaloneEquipment(equipmentData)
+        : await fastAPI.createEquipment(equipmentData);
       // console.log('✅ Equipment created successfully:', createdEquipment);
 
       // Refresh equipment data from database to ensure consistency
@@ -3110,7 +3516,2393 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
     basicInfoEquipment: equipmentCategories.filter(cat => cat === 'basic').length
   }), [equipmentCategories]);
 
+  // Get the equipment being viewed
+  const viewingEquipment = viewingEquipmentId ? localEquipment.find(eq => eq.id === viewingEquipmentId) : null;
+
+
+  // Export equipment logs to Excel
+  const exportEquipmentLogsToExcel = () => {
+    const entries = equipmentProgressEntries || [];
+    const equipmentData = entries.map((entry: any, index: number) => {
+      const formatDate = (dateString: string) => {
+        if (!dateString) return 'Unknown';
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', { 
+          month: 'short', 
+          day: 'numeric', 
+          year: 'numeric' 
+        });
+      };
+
+      const getTimeAgo = (dateString: string) => {
+        if (!dateString) return 'Unknown';
+        const days = Math.floor((new Date().getTime() - new Date(dateString).getTime()) / (1000 * 60 * 60 * 24));
+        if (days === 0) return 'Today';
+        if (days === 1) return '1 day ago';
+        return `${days} days ago`;
+      };
+
+      return {
+        'Activity Type': entry.activity_type || 'Activity',
+        'Equipment': entry.metadata?.tagNumber || entry.metadata?.tag_number || 'Unknown',
+        'Description': entry.action_description || '',
+        'Updated': formatDate(entry.created_at),
+        'Time Ago': getTimeAgo(entry.created_at),
+        'Updated By': entry.created_by_user?.full_name || entry.created_by || 'Unknown User'
+      };
+    });
+
+    // Convert to CSV
+    const headers = Object.keys(equipmentData[0] || {});
+    const csvContent = [
+      headers.join(','),
+      ...equipmentData.map((row: any) => headers.map(header => `"${String(row[header] || '').replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    // Create and download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Equipment_Logs_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Team member management functions
+  const handleCloseAddMember = () => {
+    setShowAddMember(false);
+    setNewMember({ name: "", email: "", phone: "", position: "", role: "", permissions: [], equipmentAssignments: [], dataAccess: [], accessLevel: "viewer" });
+    setSelectedExistingMemberEmail("");
+    setIsExistingMemberMode(false);
+  };
+
+  const handleExistingMemberSelect = (email: string) => {
+    if (email === "" || email === "new") {
+      setIsExistingMemberMode(false);
+      setSelectedExistingMemberEmail("");
+      setNewMember({
+        name: "",
+        email: "",
+        phone: "",
+        position: "",
+        role: "",
+        permissions: [],
+        equipmentAssignments: [],
+        dataAccess: [],
+        accessLevel: "viewer"
+      });
+    } else {
+      const member = existingFirmMembers.find(m => m.email === email);
+      if (member) {
+        setIsExistingMemberMode(true);
+        setSelectedExistingMemberEmail(email);
+        const roleObj = roles.find(r => r.name === (member.role || member.access_level || 'viewer'));
+        setNewMember({
+          name: member.name || "",
+          email: member.email || "",
+          phone: member.phone || "",
+          position: "",
+          role: mapRoleToDisplay(member.role || member.access_level || 'viewer'),
+          permissions: roleObj ? roleObj.permissions : getPermissionsByRole(member.role || 'viewer'),
+          equipmentAssignments: [viewingEquipmentId || ""].filter(Boolean),
+          dataAccess: member.data_access || [],
+          accessLevel: member.access_level || 'viewer'
+        });
+      }
+    }
+  };
+
+  const addTeamMember = async () => {
+    console.log('addTeamMember called', { 
+      newMember, 
+      viewingEquipmentId,
+      allFieldsValid: !!(newMember.name && newMember.email && newMember.position && newMember.role && viewingEquipmentId)
+    });
+    
+    if (!newMember.name || !newMember.email || !newMember.position || !newMember.role || !viewingEquipmentId) {
+      console.error('Missing required fields:', {
+        name: !!newMember.name,
+        email: !!newMember.email,
+        position: !!newMember.position,
+        role: !!newMember.role,
+        viewingEquipmentId: !!viewingEquipmentId
+      });
+      toast({ 
+        title: 'Validation Error', 
+        description: 'Please fill in all required fields.', 
+        variant: 'destructive' 
+      });
+      return;
+    }
+    
+    try {
+        const role = roles.find(r => r.name === newMember.role);
+        
+        const roleMapping: Record<string, string> = {
+          'Project Manager': 'project_manager', 
+          'VDCR Manager': 'vdcr_manager', 
+          'Editor': 'editor',
+          'Viewer': 'viewer'
+        };
+        
+        const dbRole = roleMapping[newMember.role] || 'viewer';
+        
+        // For standalone equipment, we'll create equipment team members
+        // This assumes there's an equipment_members table or we use team_positions
+        const memberData = {
+          equipment_id: viewingEquipmentId,
+          name: newMember.name,
+          email: newMember.email,
+          phone: newMember.phone || "",
+          position: newMember.position,
+          role: dbRole,
+          status: "active",
+          permissions: role ? role.permissions : [],
+          equipment_assignments: [viewingEquipmentId],
+          data_access: newMember.dataAccess || [],
+          access_level: newMember.accessLevel || "viewer",
+          avatar: newMember.name.split(' ').map(n => n[0]).join('').toUpperCase(),
+          last_active: new Date().toISOString()
+        };
+
+        // For standalone equipment, use standalone_equipment_team_positions table
+        const teamPositionData = {
+          equipment_id: viewingEquipmentId,
+          position_name: newMember.position,
+          person_name: newMember.name,
+          email: newMember.email,
+          phone: newMember.phone || "",
+          role: dbRole === 'project_manager' || dbRole === 'vdcr_manager' || dbRole === 'editor' ? 'editor' : 'viewer'
+        };
+
+        console.log('📤 Creating standalone team position with data:', teamPositionData);
+        console.log('🔍 Equipment ID being used:', viewingEquipmentId);
+        console.log('🔍 Equipment ID type:', typeof viewingEquipmentId);
+        const result = await fastAPI.createStandaloneTeamPosition(teamPositionData);
+        console.log('✅ Team position created successfully:', result);
+        
+        // Small delay to ensure database is updated
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Log activity
+        if (viewingEquipmentId && viewingEquipment) {
+          try {
+            await logTeamMemberAdded(
+              null, // No project_id for standalone
+              viewingEquipmentId, // equipmentId as string, not array
+              viewingEquipment.type || 'Equipment', // equipmentType
+              viewingEquipment.tagNumber || 'Unknown', // tagNumber
+              newMember.name, // memberName
+              newMember.position || newMember.role || 'viewer' // role
+            );
+            console.log('✅ Activity logged successfully');
+          } catch (logError) {
+            console.error('⚠️ Error logging activity (non-fatal):', logError);
+            // Don't fail the whole operation if logging fails
+          }
+        }
+
+        console.log('🔄 Refreshing team members list...');
+        await fetchEquipmentTeamMembers();
+        console.log('✅ Team members list refreshed');
+        
+        // Double-check: fetch again after a short delay to ensure we have the latest data
+        setTimeout(async () => {
+          console.log('🔄 Second refresh of team members list...');
+          await fetchEquipmentTeamMembers();
+        }, 1000);
+        
+        if (onActivityUpdate) {
+          onActivityUpdate();
+        }
+        
+        setNewMember({ name: "", email: "", phone: "", position: "", role: "", permissions: [], equipmentAssignments: [], dataAccess: [], accessLevel: "viewer" });
+        setShowAddMember(false);
+        setSelectedExistingMemberEmail("");
+        setIsExistingMemberMode(false);
+        
+        console.log('✅ Showing success toast');
+        toast({ title: 'Success', description: 'Team member added successfully!' });
+      } catch (error: any) {
+        console.error('❌ Error adding team member:', error);
+        console.error('❌ Error details:', {
+          message: error?.message,
+          response: error?.response?.data,
+          status: error?.response?.status,
+          stack: error?.stack
+        });
+        toast({ 
+          title: 'Error', 
+          description: error?.response?.data?.message || error?.message || 'Error adding team member. Please try again.', 
+          variant: 'destructive' 
+        });
+      }
+  };
+
+  const editTeamMember = (member: any) => {
+    setSelectedMember(member);
+    
+    const roleDisplayMapping: Record<string, string> = {
+      'project_manager': 'Project Manager',
+      'vdcr_manager': 'VDCR Manager', 
+      'editor': 'Editor',
+      'viewer': 'Viewer'
+    };
+    
+    const displayRole = roleDisplayMapping[member.role] || 'Viewer';
+    
+    setNewMember({
+      name: member.name || "",
+      email: member.email || "",
+      phone: member.phone || "",
+      position: member.position || "",
+      role: displayRole,
+      permissions: member.permissions || [],
+      equipmentAssignments: member.equipmentAssignments || member.equipment_assignments || [viewingEquipmentId || ""].filter(Boolean),
+      dataAccess: member.dataAccess || member.data_access || [],
+      accessLevel: member.accessLevel || member.access_level || "viewer"
+    });
+    
+    setShowEditMember(true);
+  };
+
+  const updateTeamMember = async () => {
+    console.log('🔄 updateTeamMember called', { 
+      selectedMember: selectedMember?.id, 
+      newMember: { name: newMember.name, email: newMember.email, role: newMember.role },
+      viewingEquipmentId,
+      projectId
+    });
+    
+    if (!selectedMember) {
+      console.error('❌ No selected member');
+      toast({ title: 'Error', description: 'No member selected for editing.', variant: 'destructive' });
+      return;
+    }
+    
+    if (!newMember.name || !newMember.email || !newMember.role) {
+      console.error('❌ Missing required fields:', { name: !!newMember.name, email: !!newMember.email, role: !!newMember.role });
+      toast({ title: 'Error', description: 'Please fill in all required fields.', variant: 'destructive' });
+      return;
+    }
+    
+    if (!viewingEquipmentId) {
+      console.error('❌ No viewing equipment ID');
+      toast({ title: 'Error', description: 'Equipment ID is missing.', variant: 'destructive' });
+      return;
+    }
+    
+    try {
+      const role = roles.find(r => r.name === newMember.role);
+      
+      const roleMapping: Record<string, string> = {
+        'Project Manager': 'project_manager',
+        'VDCR Manager': 'vdcr_manager', 
+        'Editor': 'editor',
+        'Viewer': 'viewer'
+      };
+      
+      const dbRole = roleMapping[newMember.role] || 'viewer';
+      console.log('🔍 Role mapping:', { displayRole: newMember.role, dbRole });
+      
+      // For standalone equipment, update standalone_equipment_team_positions table
+      if (projectId === 'standalone' && selectedMember.id) {
+        const equipmentRole: 'editor' | 'viewer' = (dbRole === 'project_manager' || dbRole === 'vdcr_manager' || dbRole === 'editor') ? 'editor' : 'viewer';
+        const teamPositionData = {
+          position_name: newMember.position,
+          person_name: newMember.name,
+          email: newMember.email,
+          phone: newMember.phone || "",
+          role: equipmentRole,
+          updated_at: new Date().toISOString()
+        };
+        
+        console.log('📤 Updating standalone team position:', { id: selectedMember.id, data: teamPositionData });
+        
+        // Use REST API directly to avoid hanging issues
+        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+        const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        
+        const response = await fetch(
+          `${SUPABASE_URL}/rest/v1/standalone_equipment_team_positions?id=eq.${selectedMember.id}`,
+          {
+            method: 'PATCH',
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=representation'
+            },
+            body: JSON.stringify(teamPositionData)
+          }
+        );
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('❌ Error updating standalone team position:', response.status, errorText);
+          throw new Error(`Failed to update team member: ${response.status} ${errorText}`);
+        }
+        
+        const updatedData = await response.json();
+        console.log('✅ Standalone team position updated successfully:', updatedData);
+        console.log('✅ Updated data type:', Array.isArray(updatedData) ? 'array' : typeof updatedData);
+        console.log('✅ Updated data length:', Array.isArray(updatedData) ? updatedData.length : 'N/A');
+      } else {
+        // For project equipment, use the existing update logic
+        const memberData = {
+          name: newMember.name,
+          email: newMember.email,
+          phone: newMember.phone || "",
+          position: newMember.position || "",
+          role: dbRole,
+          permissions: role ? role.permissions : selectedMember.permissions,
+          equipment_assignments: newMember.equipmentAssignments || [viewingEquipmentId].filter(Boolean),
+          data_access: newMember.dataAccess || selectedMember.dataAccess || [],
+          access_level: newMember.accessLevel || selectedMember.accessLevel || "viewer",
+          avatar: newMember.name.split(' ').map(n => n[0]).join('').toUpperCase(),
+          updated_at: new Date().toISOString()
+        };
+        
+        // Update in project_members table (existing logic)
+        await fastAPI.updateProjectMember(selectedMember.id, memberData);
+      }
+      
+      console.log('🔄 Refreshing team members list after update...');
+      await fetchEquipmentTeamMembers();
+      console.log('✅ Team members list refreshed');
+      
+      console.log('🔄 Closing edit modal and resetting form...');
+      setShowEditMember(false);
+      setSelectedMember(null);
+      setNewMember({ name: "", email: "", phone: "", position: "", role: "", permissions: [], equipmentAssignments: [], dataAccess: [], accessLevel: "viewer" });
+      
+      console.log('✅ Showing success toast');
+      toast({ title: 'Success', description: 'Team member updated successfully!' });
+    } catch (error) {
+      console.error('❌ Error updating team member:', error);
+      toast({ title: 'Error', description: 'Error updating team member. Please try again.', variant: 'destructive' });
+    }
+  };
+
+  const removeTeamMember = async (memberId: string) => {
+    if (window.confirm("Are you sure you want to remove this team member?")) {
+      try {
+        // For standalone equipment, delete from standalone_equipment_team_positions table
+        if (memberId) {
+          const { error } = await supabase
+            .from('standalone_equipment_team_positions')
+            .delete()
+            .eq('id', memberId);
+          if (error) throw error;
+        }
+        
+        await fetchEquipmentTeamMembers();
+        
+        toast({ title: 'Success', description: 'Team member removed successfully!' });
+      } catch (error) {
+        console.error('Error removing team member:', error);
+        toast({ title: 'Error', description: 'Error removing team member. Please try again.', variant: 'destructive' });
+      }
+    }
+  };
+
+  // If viewing equipment details (standalone only), show details view
+  if (viewingEquipmentId && viewingEquipment && projectId === 'standalone') {
   return (
+    <>
+      <div className="min-h-screen bg-gray-50 py-2 sm:py-8">
+        <div className="container mx-auto px-1">
+          {/* Header with Back Button */}
+          <div className="mb-4 sm:mb-6">
+            <Button
+              onClick={() => setViewingEquipmentId(null)}
+              variant="outline"
+              className="flex items-center gap-2 sm:gap-3 px-4 sm:px-6 py-2 sm:py-3 text-sm sm:text-base font-semibold text-gray-700 hover:text-white hover:bg-gradient-to-r hover:from-blue-500 hover:to-blue-600 border-2 border-gray-300 hover:border-blue-600 transition-all duration-300 rounded-xl shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+            >
+              <ArrowLeft size={16} className="sm:w-[18px] sm:h-[18px]" />
+              Back to Equipment
+            </Button>
+          </div>
+
+          {/* Main Overview Card - Common for All Tabs */}
+          <div className="mb-4 sm:mb-6 bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 rounded-2xl p-4 sm:p-6 lg:p-8 border border-purple-100 shadow-lg">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg flex-shrink-0">
+                <Wrench size={20} className="text-white sm:w-6 sm:h-6 lg:w-8 lg:h-8" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-xl sm:text-2xl lg:text-4xl font-bold bg-gradient-to-r from-purple-600 to-purple-600 bg-clip-text text-transparent mb-1 sm:mb-2 break-words">
+                  Standalone Equipment Details
+                </h1>
+                <p className="text-sm sm:text-base lg:text-xl text-gray-600 font-medium break-words">
+                  {viewingEquipment.type || viewingEquipment.name || 'Equipment'} - Equipment Management & Tracking
+                </p>
+              </div>
+            </div>
+            
+            {/* Quick Stats Row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
+              <div className="bg-white/70 backdrop-blur-sm rounded-xl p-3 sm:p-4 border border-white/50">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-purple-600 mb-1">Equipment Status</p>
+                    <div className="flex items-center gap-2">
+                      <div className="text-lg sm:text-xl lg:text-2xl font-bold text-purple-800 capitalize truncate">{viewingEquipment.status || 'Active'}</div>
+                    </div>
+                  </div>
+                  <Target size={20} className="text-purple-500 flex-shrink-0 sm:w-6 sm:h-6" />
+                </div>
+              </div>
+              
+              <div className="bg-white/70 backdrop-blur-sm rounded-xl p-3 sm:p-4 border border-white/50">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-green-600 mb-1">Progress Phase</p>
+                    <div className="text-lg sm:text-xl lg:text-2xl font-bold text-green-800 capitalize">
+                      {viewingEquipment.progressPhase || 'Not Started'}
+                    </div>
+                  </div>
+                  <BarChart3 size={20} className="text-green-500 flex-shrink-0 sm:w-6 sm:h-6" />
+                </div>
+              </div>
+              
+              <div className="bg-white/70 backdrop-blur-sm rounded-xl p-3 sm:p-4 border border-white/50">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-blue-600 mb-1">Tag Number</p>
+                    <div className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-800 truncate">{viewingEquipment.tagNumber || 'N/A'}</div>
+                  </div>
+                  <FileText size={20} className="text-blue-500 flex-shrink-0 sm:w-6 sm:h-6" />
+                </div>
+              </div>
+              
+              <div className="bg-white/70 backdrop-blur-sm rounded-xl p-3 sm:p-4 border border-white/50">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-orange-600 mb-1">Location</p>
+                    <div className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-800 truncate">{viewingEquipment.location || 'TBD'}</div>
+                  </div>
+                  <MapPin size={20} className="text-orange-500 flex-shrink-0 sm:w-6 sm:h-6" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Unified Tabbed Interface */}
+          <Tabs value={equipmentDetailsTab} onValueChange={setEquipmentDetailsTab} className="w-full">
+            <div className="overflow-x-auto overflow-y-hidden xl:overflow-x-visible xl:overflow-y-visible mb-16 scroll-smooth p-1">
+              <TabsList className="flex xl:grid min-w-max xl:w-full bg-transparent rounded-2xl p-2 xl:grid-cols-3 gap-2 flex-nowrap">
+                <TabsTrigger 
+                  value="equipment-details" 
+                  className="flex items-center gap-3 px-4 py-4 text-sm font-semibold bg-white data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-blue-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:scale-105 transition-all duration-300 rounded-xl hover:bg-gray-200 data-[state=active]:hover:from-blue-600 data-[state=active]:hover:to-blue-700 flex-shrink-0"
+                >
+                  <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center data-[state=active]:bg-white/20 data-[state=active]:text-white">
+                    <Building size={20} className="text-blue-600 data-[state=active]:text-white" />
+                  </div>
+                  <span>Equipment Details</span>
+                </TabsTrigger>
+                
+                <TabsTrigger 
+                  value="equipment-logs" 
+                  className="flex items-center gap-3 px-4 py-4 text-sm font-semibold bg-white data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-purple-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:scale-105 transition-all duration-300 rounded-xl hover:bg-gray-200 data-[state=active]:hover:from-purple-600 data-[state=active]:hover:to-purple-700 flex-shrink-0"
+                >
+                  <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center data-[state=active]:bg-white/20 data-[state=active]:text-white">
+                    <FileText size={20} className="text-purple-600 data-[state=active]:text-white" />
+                  </div>
+                  <span>Equipment Logs</span>
+                </TabsTrigger>
+
+                <TabsTrigger 
+                  value="settings" 
+                  className="flex items-center gap-3 px-4 py-4 text-sm font-semibold bg-white data-[state=active]:bg-gradient-to-r data-[state=active]:from-gray-500 data-[state=active]:to-gray-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:scale-105 transition-all duration-300 rounded-xl hover:bg-gray-200 data-[state=active]:hover:from-gray-600 data-[state=active]:hover:to-gray-700 flex-shrink-0"
+                >
+                  <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center data-[state=active]:bg-white/20 data-[state=active]:text-white">
+                    <Settings size={20} className="text-gray-600 data-[state=active]:text-white" />
+                  </div>
+                  <span>Settings</span>
+                </TabsTrigger>
+              </TabsList>
+            </div>
+
+            {/* Equipment Details Tab */}
+            <TabsContent value="equipment-details" className="space-y-6 mt-8">
+              <div className="bg-white rounded-2xl shadow-lg border-2 border-gray-200 overflow-hidden">
+                <div className="bg-gradient-to-r from-blue-50 to-blue-100 px-6 py-4 border-b border-blue-200">
+                  <h2 className="text-xl font-semibold text-blue-800 flex items-center gap-2">
+                    <Building size={24} className="text-blue-600" />
+                    Equipment Information
+                  </h2>
+                  <p className="text-blue-600 text-sm mt-1">View and manage equipment details</p>
+                </div>
+                <div className="p-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
+                    {/* Left Column - Basic Information */}
+                    <div className="bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-100">
+                      <h4 className="text-base sm:text-lg font-semibold text-gray-700 mb-3 sm:mb-4">Basic Information</h4>
+                      <div className="space-y-0">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3 border-b border-gray-100">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">Equipment Type</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">{viewingEquipment.type || 'Not specified'}</span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3 border-b border-gray-100">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">Tag Number</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">{viewingEquipment.tagNumber || 'Not specified'}</span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3 border-b border-gray-100">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">Job Number</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">{viewingEquipment.jobNumber || 'Not specified'}</span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3 border-b border-gray-100">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">MSN Number</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">{viewingEquipment.manufacturingSerial || 'Not specified'}</span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3 border-b border-gray-100">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">Location</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">{viewingEquipment.location || 'Not specified'}</span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3 border-b border-gray-100">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">Consultant</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">{viewingEquipment.consultant || (viewingEquipment.custom_fields?.find((f: any) => f.name === 'Consultant')?.value) || 'Not specified'}</span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">TPI Agency</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">{viewingEquipment.tpiAgency || (viewingEquipment.custom_fields?.find((f: any) => f.name === 'TPI Agency')?.value) || 'Not specified'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right Column - Technical Specifications */}
+                    <div className="bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-100">
+                      <h4 className="text-base sm:text-lg font-semibold text-gray-700 mb-3 sm:mb-4">Technical Specifications</h4>
+                      <div className="space-y-0">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3 border-b border-gray-100">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">Size</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">{viewingEquipment.size || 'Not specified'}</span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3 border-b border-gray-100">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">Material</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">{viewingEquipment.material || 'Not specified'}</span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">Design Code</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">{viewingEquipment.designCode || 'Not specified'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Client & Project Information */}
+                  <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
+                    {/* Left Column - Client Information */}
+                    <div className="bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-100">
+                      <h4 className="text-base sm:text-lg font-semibold text-gray-700 mb-3 sm:mb-4">Client Information</h4>
+                      <div className="space-y-0">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3 border-b border-gray-100">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">Client Name</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">{viewingEquipment.clientName || (viewingEquipment.custom_fields?.find((f: any) => f.name === 'Client Name')?.value) || 'Not specified'}</span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3 border-b border-gray-100">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">Client Industry</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">{viewingEquipment.clientIndustry || (viewingEquipment.custom_fields?.find((f: any) => f.name === 'Client Industry')?.value) || 'Not specified'}</span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3 border-b border-gray-100">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">Client Focal Point</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">{viewingEquipment.clientFocalPoint || (viewingEquipment.custom_fields?.find((f: any) => f.name === 'Client Focal Point')?.value) || 'Not specified'}</span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">Plant Location</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">{viewingEquipment.plantLocation || (viewingEquipment.custom_fields?.find((f: any) => f.name === 'Plant Location')?.value) || viewingEquipment.location || 'Not specified'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right Column - Project Details */}
+                    <div className="bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-100">
+                      <h4 className="text-base sm:text-lg font-semibold text-gray-700 mb-3 sm:mb-4">Project Details</h4>
+                      <div className="space-y-0">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3 border-b border-gray-100">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">PO Number</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">{viewingEquipment.poNumber || (viewingEquipment.custom_fields?.find((f: any) => f.name === 'PO Number')?.value) || viewingEquipment.poCdd || 'Not specified'}</span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3 border-b border-gray-100">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">Sales Order Date</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">
+                            {(() => {
+                              const salesOrderDate = viewingEquipment.salesOrderDate || (viewingEquipment.custom_fields?.find((f: any) => f.name === 'Sales Order Date')?.value) || '';
+                              if (!salesOrderDate || salesOrderDate === 'Not specified') return 'Not specified';
+                              // Remove time portion if present (format: YYYY-MM-DDTHH:mm:ss...)
+                              return salesOrderDate.split('T')[0];
+                            })()}
+                          </span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">Completion Date</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">
+                            {(() => {
+                              const completionDate = viewingEquipment.completionDate || (viewingEquipment.custom_fields?.find((f: any) => f.name === 'Completion Date')?.value) || '';
+                              if (!completionDate || completionDate === 'Not specified') return 'Not specified';
+                              // Remove time portion if present (format: YYYY-MM-DDTHH:mm:ss...)
+                              return completionDate.split('T')[0];
+                            })()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Team & Management */}
+                  <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
+                    {/* Left Column - Team Members */}
+                    <div className="bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-100">
+                      <h4 className="text-base sm:text-lg font-semibold text-gray-700 mb-3 sm:mb-4">Team Members</h4>
+                      <div className="space-y-0">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">Equipment Manager</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">{viewingEquipment.equipmentManager || (viewingEquipment.custom_fields?.find((f: any) => f.name === 'Equipment Manager')?.value) || 'Not specified'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right Column - Status & Progress */}
+                    <div className="bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-100">
+                      <h4 className="text-base sm:text-lg font-semibold text-gray-700 mb-3 sm:mb-4">Status & Progress</h4>
+                      <div className="space-y-0">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3 border-b border-gray-100">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">Status</span>
+                          <Badge className={`w-fit ${
+                            viewingEquipment.status === 'on-track' ? 'bg-green-100 text-green-800 border-green-200' :
+                            viewingEquipment.status === 'delayed' ? 'bg-red-100 text-red-800 border-red-200' :
+                            viewingEquipment.status === 'completed' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                            'bg-gray-100 text-gray-800 border-gray-200'
+                          }`}>
+                            {viewingEquipment.status || 'Not specified'}
+                          </Badge>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3 border-b border-gray-100">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">Progress Phase</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">{viewingEquipment.progressPhase || 'Not specified'}</span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3 border-b border-gray-100">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">Next Milestone</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">{viewingEquipment.nextMilestone || 'Not specified'}</span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">PO-CDD</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">{viewingEquipment.poCdd || 'Not specified'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Scope of Work */}
+                  <div className="mt-6 bg-gray-50 rounded-lg p-4 sm:p-6 border-0 shadow-sm">
+                    <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-4 sm:mb-6 flex items-center">
+                      <Target size={18} className="sm:w-5 sm:h-5 mr-2 text-indigo-600" />
+                      Equipment Specifications
+                    </h3>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
+                      {/* Left Column - Services Included */}
+                      <div className="bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-100">
+                        <h4 className="text-base sm:text-lg font-semibold text-gray-700 mb-3 sm:mb-4">Services Included</h4>
+                        <div className="space-y-0">
+                          {(() => {
+                            const services = viewingEquipment.servicesIncluded || {};
+                            const serviceList = typeof services === 'object' && !Array.isArray(services) 
+                              ? Object.entries(services).filter(([_, included]: [string, any]) => included).map(([service]) => service)
+                              : Array.isArray(services) ? services : [];
+                            
+                            return serviceList.length > 0 ? (
+                              serviceList.map((service: string, index: number) => (
+                                <div key={index} className="flex items-center py-2 sm:py-3 border-b border-gray-100 last:border-b-0">
+                                  <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-500 rounded-full mr-2 sm:mr-3"></div>
+                                  <span className="text-xs sm:text-sm text-gray-700 capitalize">{service}</span>
+                                </div>
+                              ))
+                            ) : (
+                              <p className="text-gray-500 text-xs sm:text-sm">No services specified</p>
+                            );
+                          })()}
+                        </div>
+                      </div>
+
+                      {/* Right Column - Scope Description */}
+                      <div className="bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-100">
+                        <h4 className="text-base sm:text-lg font-semibold text-gray-700 mb-3 sm:mb-4">Scope Description</h4>
+                        <div className="bg-gray-50 p-3 sm:p-4 rounded-lg border">
+                          <p className="text-xs sm:text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                            {viewingEquipment.scopeDescription || viewingEquipment.custom_fields?.find((f: any) => f.name === 'Scope Description')?.value || 'No scope description provided. Please add detailed scope information for this equipment.'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Documents Uploaded */}
+                  <div className="mt-6 bg-gray-50 rounded-lg p-4 sm:p-6 border-0 shadow-sm">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 space-y-3 sm:space-y-0">
+                      <h3 className="text-lg sm:text-xl font-bold text-gray-800 flex items-center">
+                        <FileText size={18} className="sm:w-5 sm:h-5 mr-2 text-amber-600" />
+                        Documents Uploaded
+                      </h3>
+                    </div>
+
+                    <div className="bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-100">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                        {/* Left Column - Core Documents */}
+                        <div className="space-y-3 sm:space-y-4">
+                          <h4 className="text-base sm:text-lg font-semibold text-gray-700 mb-2 sm:mb-3">Core Documents</h4>
+
+                          {/* Unpriced PO File */}
+                          {(() => {
+                            const unpricedPODoc = documents[viewingEquipmentId]?.find((doc: any) => doc.document_type === 'Unpriced PO File');
+                            const hasUnpricedPO = !!unpricedPODoc;
+                            return (
+                              <div className={`p-3 sm:p-4 rounded-lg border transition-all duration-200 ${hasUnpricedPO
+                                  ? 'border-emerald-200 bg-emerald-25 hover:bg-emerald-50 shadow-sm'
+                                  : 'border-gray-200 bg-gray-50'
+                                }`}>
+                                <div className="flex items-center gap-2 sm:gap-3">
+                                  <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center ${hasUnpricedPO ? 'bg-emerald-100' : 'bg-gray-100'
+                                    }`}>
+                                    {hasUnpricedPO ? (
+                                      <svg className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                      </svg>
+                                    ) : (
+                                      <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                      </svg>
+                                    )}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="font-medium text-gray-800 text-sm sm:text-base">Unpriced PO File</h4>
+                                    <p className={`text-xs sm:text-sm ${hasUnpricedPO ? 'text-emerald-600' : 'text-gray-500'
+                                      }`}>
+                                      {hasUnpricedPO ? 'File uploaded • Click to view' : 'No file uploaded'}
+                                    </p>
+                                  </div>
+                                  {hasUnpricedPO && (
+                                    <button
+                                      onClick={() => setDocumentUrlModal({
+                                        url: unpricedPODoc.document_url,
+                                        name: unpricedPODoc.document_name || unpricedPODoc.name,
+                                        uploadedBy: unpricedPODoc.uploadedBy,
+                                        uploadDate: unpricedPODoc.uploadDate
+                                      })}
+                                      className="p-1.5 hover:bg-emerald-100 rounded-md text-emerald-600 transition-colors"
+                                      title="View document"
+                                    >
+                                      <Eye className="w-4 h-4 sm:w-5 sm:h-5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {/* Design Inputs PID */}
+                          {(() => {
+                            const designInputsDoc = documents[viewingEquipmentId]?.find((doc: any) => doc.document_type === 'Design Inputs PID');
+                            const hasDesignInputs = !!designInputsDoc;
+                            return (
+                              <div className={`p-3 sm:p-4 rounded-lg border transition-all duration-200 ${hasDesignInputs
+                                  ? 'border-emerald-200 bg-emerald-25 hover:bg-emerald-50 shadow-sm'
+                                  : 'border-gray-200 bg-gray-50'
+                                }`}>
+                                <div className="flex items-center gap-2 sm:gap-3">
+                                  <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center ${hasDesignInputs ? 'bg-emerald-100' : 'bg-gray-100'
+                                    }`}>
+                                    {hasDesignInputs ? (
+                                      <svg className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                      </svg>
+                                    ) : (
+                                      <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                      </svg>
+                                    )}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="font-medium text-gray-800 text-sm sm:text-base">Design Inputs PID</h4>
+                                    <p className={`text-xs sm:text-sm ${hasDesignInputs ? 'text-emerald-600' : 'text-gray-500'
+                                      }`}>
+                                      {hasDesignInputs ? 'File uploaded • Click to view' : 'No file uploaded'}
+                                    </p>
+                                  </div>
+                                  {hasDesignInputs && (
+                                    <button
+                                      onClick={() => setDocumentUrlModal({
+                                        url: designInputsDoc.document_url,
+                                        name: designInputsDoc.document_name || designInputsDoc.name,
+                                        uploadedBy: designInputsDoc.uploadedBy,
+                                        uploadDate: designInputsDoc.uploadDate
+                                      })}
+                                      className="p-1.5 hover:bg-emerald-100 rounded-md text-emerald-600 transition-colors"
+                                      title="View document"
+                                    >
+                                      <Eye className="w-4 h-4 sm:w-5 sm:h-5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+
+                        {/* Right Column - Additional Documents */}
+                        <div className="space-y-3 sm:space-y-4">
+                          <h4 className="text-base sm:text-lg font-semibold text-gray-700 mb-2 sm:mb-3">Additional Documents</h4>
+
+                          {/* Client Reference Doc */}
+                          {(() => {
+                            const clientRefDoc = documents[viewingEquipmentId]?.find((doc: any) => doc.document_type === 'Client Reference Doc');
+                            const hasClientRef = !!clientRefDoc;
+                            return (
+                              <div className={`p-3 sm:p-4 rounded-lg border transition-all duration-200 ${hasClientRef
+                                  ? 'border-emerald-200 bg-emerald-25 hover:bg-emerald-50 shadow-sm'
+                                  : 'border-gray-200 bg-gray-50'
+                                }`}>
+                                <div className="flex items-center gap-2 sm:gap-3">
+                                  <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center ${hasClientRef ? 'bg-emerald-100' : 'bg-gray-100'
+                                    }`}>
+                                    {hasClientRef ? (
+                                      <svg className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                      </svg>
+                                    ) : (
+                                      <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                      </svg>
+                                    )}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="font-medium text-gray-800 text-sm sm:text-base">Client Reference Doc</h4>
+                                    <p className={`text-xs sm:text-sm ${hasClientRef ? 'text-emerald-600' : 'text-gray-500'
+                                      }`}>
+                                      {hasClientRef ? 'File uploaded • Click to view' : 'No file uploaded'}
+                                    </p>
+                                  </div>
+                                  {hasClientRef && (
+                                    <button
+                                      onClick={() => setDocumentUrlModal({
+                                        url: clientRefDoc.document_url,
+                                        name: clientRefDoc.document_name || clientRefDoc.name,
+                                        uploadedBy: clientRefDoc.uploadedBy,
+                                        uploadDate: clientRefDoc.uploadDate
+                                      })}
+                                      className="p-1.5 hover:bg-emerald-100 rounded-md text-emerald-600 transition-colors"
+                                      title="View document"
+                                    >
+                                      <Eye className="w-4 h-4 sm:w-5 sm:h-5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {/* Other Documents */}
+                          {(() => {
+                            const otherDocs = documents[viewingEquipmentId]?.filter((doc: any) => doc.document_type === 'Other Documents') || [];
+                            const hasOtherDocs = otherDocs.length > 0;
+                            return (
+                              <div className={`p-3 sm:p-4 rounded-lg border transition-all duration-200 ${hasOtherDocs
+                                  ? 'border-emerald-200 bg-emerald-25 hover:bg-emerald-50 shadow-sm'
+                                  : 'border-gray-200 bg-gray-50'
+                                }`}>
+                                <div className="flex items-center gap-2 sm:gap-3">
+                                  <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center ${hasOtherDocs ? 'bg-emerald-100' : 'bg-gray-100'
+                                    }`}>
+                                    {hasOtherDocs ? (
+                                      <svg className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                      </svg>
+                                    ) : (
+                                      <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                      </svg>
+                                    )}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="font-medium text-gray-800 text-sm sm:text-base">Other Documents</h4>
+                                    <p className={`text-xs sm:text-sm ${hasOtherDocs ? 'text-emerald-600' : 'text-gray-500'
+                                      }`}>
+                                      {hasOtherDocs
+                                        ? `${otherDocs.length} file(s) uploaded • Click to view`
+                                        : 'No files uploaded'
+                                      }
+                                    </p>
+                                  </div>
+                                  {hasOtherDocs && (
+                                    <button
+                                      onClick={() => {
+                                        // Open first document in modal
+                                        setDocumentUrlModal({
+                                          url: otherDocs[0].document_url,
+                                          name: otherDocs[0].document_name || otherDocs[0].name,
+                                          uploadedBy: otherDocs[0].uploadedBy,
+                                          uploadDate: otherDocs[0].uploadDate
+                                        });
+                                      }}
+                                      className="p-1.5 hover:bg-emerald-100 rounded-md text-emerald-600 transition-colors"
+                                      title="View documents"
+                                    >
+                                      <Eye className="w-4 h-4 sm:w-5 sm:h-5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Notes & Additional Information */}
+                  <div className="mt-6 bg-white rounded-lg p-4 sm:p-6">
+                    <h3 className="text-base sm:text-lg lg:text-xl font-bold text-gray-800 mb-3 sm:mb-4 flex items-center">
+                      <FileText size={16} className="sm:w-4 sm:h-4 lg:w-5 lg:h-5 mr-2 text-teal-600 flex-shrink-0" />
+                      <span className="whitespace-nowrap">Notes & Additional Information</span>
+                    </h3>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                      {/* Left Column - Kickoff Meeting Notes */}
+                      <div className="space-y-3 sm:space-y-4">
+                        <h4 className="text-base sm:text-lg font-semibold text-gray-700 mb-2 sm:mb-3">Kickoff Meeting Notes</h4>
+                        <div className="bg-gray-50 p-3 sm:p-4 rounded-lg border">
+                          <p className="text-xs sm:text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                            {viewingEquipment.kickoffMeetingNotes || viewingEquipment.custom_fields?.find((f: any) => f.name === 'Kickoff Meeting Notes')?.value || 'No kickoff meeting notes provided. Please add meeting notes and key discussion points.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Right Column - Special Production Notes */}
+                      <div className="space-y-3 sm:space-y-4">
+                        <h4 className="text-base sm:text-lg font-semibold text-gray-700 mb-2 sm:mb-3">Special Production Notes</h4>
+                        <div className="bg-gray-50 p-3 sm:p-4 rounded-lg border">
+                          <p className="text-xs sm:text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                            {viewingEquipment.specialProductionNotes || viewingEquipment.custom_fields?.find((f: any) => f.name === 'Special Production Notes')?.value || 'No special production notes provided. Please add critical production requirements and specifications.'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* Equipment Logs Tab */}
+            <TabsContent value="equipment-logs" className="space-y-4 sm:space-y-6 mt-6 sm:mt-8">
+              <div className="bg-white rounded-2xl shadow-lg border-2 border-gray-200 overflow-hidden">
+                <div className="bg-gradient-to-r from-purple-50 to-purple-100 px-4 sm:px-6 py-3 sm:py-4 border-b border-purple-200">
+                  <h2 className="text-lg sm:text-xl font-semibold text-purple-800 flex items-center gap-2">
+                    <TrendingUp size={20} className="text-purple-600 sm:w-6 sm:h-6" />
+                    Equipment Logs
+                  </h2>
+                  <p className="text-purple-600 text-xs sm:text-sm mt-1">Track equipment progress updates and milestones</p>
+                </div>
+                <div className="p-4 sm:p-6">
+                  <div className="space-y-4 sm:space-y-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <h3 className="text-base sm:text-xl font-semibold text-gray-800 flex items-center gap-2">
+                        <Building size={18} className="text-purple-600 sm:w-5 sm:h-5" />
+                        Equipment Activity Log
+                      </h3>
+                      <Button
+                        onClick={exportEquipmentLogsToExcel}
+                        variant="outline"
+                        size="sm"
+                        className="flex items-center gap-1 sm:gap-2 bg-white hover:bg-purple-50 border-purple-200 text-purple-700 hover:text-purple-800 hover:border-purple-300 transition-all duration-200 text-xs sm:text-sm px-3"
+                      >
+                        <Download size={14} className="sm:w-4 sm:h-4" />
+                        <span className="hidden sm:inline">Export to Excel</span>
+                        <span className="sm:hidden">Export</span>
+                      </Button>
+                    </div>
+
+                    {/* Search Bar */}
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Search equipment logs by unit, status, or user..."
+                        value={equipmentSearchQuery}
+                        onChange={(e) => setEquipmentSearchQuery(e.target.value)}
+                        className="w-full px-3 sm:px-4 py-2.5 sm:py-3 pl-9 sm:pl-10 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
+                      />
+                      <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none">
+                        <svg className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                      </div>
+                      {equipmentSearchQuery && (
+                        <button
+                          onClick={() => setEquipmentSearchQuery("")}
+                          className="absolute inset-y-0 right-0 pr-2.5 sm:pr-3 flex items-center"
+                        >
+                          <svg className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                    
+                    <div className="space-y-4">
+                      {/* Filtered Equipment Logs */}
+                      {(() => {
+                        // Helper function to format date
+                        const formatDate = (dateString: string) => {
+                          if (!dateString) return 'Unknown';
+                          const date = new Date(dateString);
+                          return date.toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric', 
+                            year: 'numeric' 
+                          });
+                        };
+
+                        // Helper function to calculate time ago
+                        const getTimeAgo = (dateString: string) => {
+                          if (!dateString) return 'Unknown';
+                          const days = Math.floor((new Date().getTime() - new Date(dateString).getTime()) / (1000 * 60 * 60 * 24));
+                          if (days === 0) return 'Today';
+                          if (days === 1) return '1 day ago';
+                          return `${days} days ago`;
+                        };
+
+                        // Helper function to format values properly (handle objects, arrays, null, etc.)
+                        const formatValue = (value: any, fieldName?: string): string => {
+                          // Handle null/undefined
+                          if (value === null || value === undefined || value === '') {
+                            return 'Not set';
+                          }
+                          
+                          // Handle progress field - add % if it's a number or numeric string
+                          if (fieldName?.toLowerCase().includes('progress')) {
+                            const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+                            if (!isNaN(numValue) && isFinite(numValue)) {
+                              return `${numValue}%`;
+                            }
+                          }
+                          
+                          // Handle arrays
+                          if (Array.isArray(value)) {
+                            if (value.length === 0) return 'Empty';
+                            // For technical sections array, show summary
+                            if (fieldName?.toLowerCase().includes('technical') && value.length > 0) {
+                              const sectionNames = value.map((s: any) => s?.name || s?.section_name || 'Unnamed').filter(Boolean);
+                              if (sectionNames.length > 0) {
+                                return `${value.length} section${value.length > 1 ? 's' : ''} (${sectionNames.slice(0, 3).join(', ')}${sectionNames.length > 3 ? '...' : ''})`;
+                              }
+                            }
+                            // For other arrays, show count or first few items
+                            if (value.length <= 3) {
+                              return value.map((v: any) => typeof v === 'object' ? JSON.stringify(v) : String(v)).join(', ');
+                            }
+                            return `${value.length} items`;
+                          }
+                          
+                          // Handle objects
+                          if (typeof value === 'object') {
+                            // For technical sections object/array, try to extract meaningful info
+                            if (fieldName?.toLowerCase().includes('technical')) {
+                              try {
+                                // If it's an array of sections
+                                if (Array.isArray(value)) {
+                                  const sections = value.filter(Boolean);
+                                  if (sections.length > 0) {
+                                    const names = sections.map((s: any) => s?.name || s?.section_name || 'Section').slice(0, 3);
+                                    return `${sections.length} section${sections.length > 1 ? 's' : ''}: ${names.join(', ')}${sections.length > 3 ? '...' : ''}`;
+                                  }
+                                }
+                                // If it's a single section object
+                                if (value.name || value.section_name) {
+                                  return `Section: ${value.name || value.section_name}`;
+                                }
+                              } catch (e) {
+                                // Fall through to JSON stringify
+                              }
+                            }
+                            
+                            // For custom fields, show field count
+                            if (fieldName?.toLowerCase().includes('custom') && Array.isArray(value)) {
+                              return `${value.length} field${value.length !== 1 ? 's' : ''}`;
+                            }
+                            
+                            // Try to stringify objects meaningfully
+                            try {
+                              const str = JSON.stringify(value);
+                              // If too long, truncate
+                              if (str.length > 100) {
+                                return str.substring(0, 100) + '...';
+                              }
+                              return str;
+                            } catch (e) {
+                              return 'Object';
+                            }
+                          }
+                          
+                          // Handle boolean
+                          if (typeof value === 'boolean') {
+                            return value ? 'Yes' : 'No';
+                          }
+                          
+                          // Default: convert to string
+                          const str = String(value);
+                          
+                          // Handle empty strings
+                          if (str.trim() === '') {
+                            return 'Not set';
+                          }
+                          
+                          return str;
+                        };
+
+                        // Helper function to parse changes from metadata or action description
+                        const parseChanges = (log: any) => {
+                          const changes: Array<{ field: string; old: string; new: string }> = [];
+                          
+                          // Special handling for technical_sections
+                          if (log.metadata?.changes?.technical_sections) {
+                            const techChange = log.metadata.changes.technical_sections;
+                            if (techChange && typeof techChange === 'object' && ('old' in techChange || 'new' in techChange)) {
+                              // Parse technical sections to show what actually changed
+                              const oldSections = techChange.old;
+                              const newSections = techChange.new;
+                              
+                              if (Array.isArray(oldSections) && Array.isArray(newSections)) {
+                                const oldNames = oldSections.map((s: any) => s?.name || s?.section_name).filter(Boolean);
+                                const newNames = newSections.map((s: any) => s?.name || s?.section_name).filter(Boolean);
+                                
+                                if (JSON.stringify(oldNames.sort()) !== JSON.stringify(newNames.sort())) {
+                                  changes.push({
+                                    field: 'Technical Sections',
+                                    old: formatValue(oldSections, 'technical_sections'),
+                                    new: formatValue(newSections, 'technical_sections')
+                                  });
+                                } else {
+                                  // Same sections, but might have field changes - check individual section fields
+                                  newSections.forEach((newSec: any, idx: number) => {
+                                    const oldSec = oldSections.find((s: any) => 
+                                      (s?.name || s?.section_name) === (newSec?.name || newSec?.section_name)
+                                    );
+                                    
+                                    if (oldSec && newSec.customFields) {
+                                      const sectionName = newSec.name || newSec.section_name || `Section ${idx + 1}`;
+                                      
+                                      // Check for field changes in this section
+                                      const oldFields = oldSec.customFields || [];
+                                      const newFields = newSec.customFields || [];
+                                      
+                                      oldFields.forEach((oldField: any) => {
+                                        const newField = newFields.find((f: any) => f.name === oldField.name);
+                                        if (newField && newField.value !== oldField.value) {
+                                          changes.push({
+                                            field: `${sectionName} - ${oldField.name}`,
+                                            old: formatValue(oldField.value),
+                                            new: formatValue(newField.value)
+                                          });
+                                        }
+                                      });
+                                      
+                                      // Check for new fields
+                                      newFields.forEach((newField: any) => {
+                                        if (!oldFields.find((f: any) => f.name === newField.name)) {
+                                          changes.push({
+                                            field: `${sectionName} - ${newField.name}`,
+                                            old: 'Not set',
+                                            new: formatValue(newField.value)
+                                          });
+                                        }
+                                      });
+                                    }
+                                  });
+                                }
+                              } else {
+                                changes.push({
+                                  field: 'Technical Sections',
+                                  old: formatValue(oldSections, 'technical_sections'),
+                                  new: formatValue(newSections, 'technical_sections')
+                                });
+                              }
+                            }
+                          }
+                          
+                          // Try to get other changes from metadata (excluding technical_sections which we handled above)
+                          if (log.metadata?.changes && typeof log.metadata.changes === 'object') {
+                            Object.entries(log.metadata.changes).forEach(([field, change]: [string, any]) => {
+                              // Skip technical_sections as we already handled it
+                              if (field === 'technical_sections') return;
+                              
+                              if (change && typeof change === 'object' && ('old' in change || 'new' in change)) {
+                                const formattedOld = formatValue(change.old, field);
+                                const formattedNew = formatValue(change.new, field);
+                                
+                                // Skip futile changes: "Not set" → "Not set" or identical values
+                                if (formattedOld === formattedNew) return;
+                                if (formattedOld === 'Not set' && formattedNew === 'Not set') return;
+                                if (formattedOld === 'Not-set' && formattedNew === 'Not-set') return;
+                                
+                                // Normalize both values to check if they're effectively the same (empty/not assigned)
+                                const normalizeForEmpty = (val: string): string => {
+                                  const lower = val.toLowerCase().trim();
+                                  if (lower === 'not set' || lower === 'not-set' || lower === 'not assigned' || 
+                                      lower === 'null' || lower === 'undefined' || lower === '') {
+                                    return 'empty';
+                                  }
+                                  return lower;
+                                };
+                                
+                                const oldNormalized = normalizeForEmpty(formattedOld);
+                                const newNormalized = normalizeForEmpty(formattedNew);
+                                
+                                // Skip if both are effectively empty/not assigned
+                                if (oldNormalized === 'empty' && newNormalized === 'empty') {
+                                  return;
+                                }
+                                
+                                const formattedField = field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                changes.push({
+                                  field: formattedField,
+                                  old: formattedOld,
+                                  new: formattedNew
+                                });
+                              }
+                            });
+                          }
+                          
+                          // Fallback to old_value and new_value if available
+                          if (changes.length === 0 && (log.old_value !== undefined || log.new_value !== undefined)) {
+                            const formattedOld = formatValue(log.old_value, log.field_name);
+                            const formattedNew = formatValue(log.new_value, log.field_name);
+                            
+                            // Skip futile changes here too
+                            if (formattedOld !== formattedNew && 
+                                !(formattedOld === 'Not set' && formattedNew === 'Not set') &&
+                                !(formattedOld === 'Not-set' && formattedNew === 'Not-set')) {
+                              changes.push({
+                                field: log.field_name ? log.field_name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Field',
+                                old: formattedOld,
+                                new: formattedNew
+                              });
+                            }
+                          }
+                          
+                          // Final filter: remove any remaining futile entries
+                          return changes.filter(change => {
+                            const oldNorm = String(change.old).trim().toLowerCase();
+                            const newNorm = String(change.new).trim().toLowerCase();
+                            
+                            // Skip if identical
+                            if (oldNorm === newNorm) return false;
+                            
+                            // Skip if both are "not set"/"not assigned" variations (equivalent empty states)
+                            const emptyVariants = ['not set', 'not-set', 'not assigned', 'null', 'undefined', ''];
+                            if (emptyVariants.includes(oldNorm) && emptyVariants.includes(newNorm)) return false;
+                            
+                            return true;
+                          });
+                        };
+
+                        // Helper function to get activity type badge info
+                        const getActivityTypeInfo = (activityType: string) => {
+                          const types: Record<string, { label: string; color: string; bgColor: string; borderColor: string; icon: any }> = {
+                            'equipment_created': { label: 'Created', color: 'text-green-800', bgColor: 'bg-green-100', borderColor: 'border-green-200', icon: Building },
+                            'equipment_updated': { label: 'Updated', color: 'text-blue-800', bgColor: 'bg-blue-100', borderColor: 'border-blue-200', icon: Wrench },
+                            'equipment_deleted': { label: 'Deleted', color: 'text-red-800', bgColor: 'bg-red-100', borderColor: 'border-red-200', icon: AlertTriangle },
+                            'progress_image_uploaded': { label: 'Progress Image', color: 'text-purple-800', bgColor: 'bg-purple-100', borderColor: 'border-purple-200', icon: Image },
+                            'technical_specs_updated': { label: 'Technical Specs', color: 'text-orange-800', bgColor: 'bg-orange-100', borderColor: 'border-orange-200', icon: Wrench },
+                            'technical_section_added': { label: 'Tech Section Added', color: 'text-orange-800', bgColor: 'bg-orange-100', borderColor: 'border-orange-200', icon: Wrench },
+                            'document_uploaded': { label: 'Document Added', color: 'text-indigo-800', bgColor: 'bg-indigo-100', borderColor: 'border-indigo-200', icon: FileCheck },
+                            'document_updated': { label: 'Document Updated', color: 'text-indigo-800', bgColor: 'bg-indigo-100', borderColor: 'border-indigo-200', icon: FileCheck },
+                            'team_member_added': { label: 'Team Member', color: 'text-teal-800', bgColor: 'bg-teal-100', borderColor: 'border-teal-200', icon: UserPlus },
+                            'team_member_removed': { label: 'Team Member', color: 'text-red-800', bgColor: 'bg-red-100', borderColor: 'border-red-200', icon: UserPlus },
+                            'progress_updated': { label: 'Progress', color: 'text-blue-800', bgColor: 'bg-blue-100', borderColor: 'border-blue-200', icon: TrendingUp }
+                          };
+                          
+                          return types[activityType] || { 
+                            label: 'Activity', 
+                            color: 'text-gray-800', 
+                            bgColor: 'bg-gray-100', 
+                            borderColor: 'border-gray-200', 
+                            icon: FileText 
+                          };
+                        };
+
+                        // Use real equipment activity logs from equipment_activity_logs table
+                        const entries = equipmentProgressEntries || [];
+                        const equipmentLogs = entries.map((log: any, index: number) => {
+                          const changes = parseChanges(log);
+                          const activityInfo = getActivityTypeInfo(log.activity_type || '');
+                          // For batch entries, show simplified count; otherwise single tag number
+                          let tagNumber = 'Unknown';
+                          if (log.metadata?.isBatch && log.metadata?.equipmentList) {
+                            // Just show count in header - detailed list shown below
+                            const count = log.metadata.equipmentCount || log.metadata.equipmentList.length || 0;
+                            tagNumber = `${count} equipment`;
+                          } else {
+                            tagNumber = log.metadata?.tagNumber || log.metadata?.tag_number || viewingEquipment?.tagNumber || 'Unknown';
+                          }
+                          const equipmentType = log.metadata?.equipmentType || log.metadata?.equipment_type || viewingEquipment?.type || 'Equipment';
+                          
+                          return {
+                            id: log.id || index + 1,
+                            activityType: log.activity_type,
+                            activityInfo,
+                            equipmentType,
+                            tagNumber,
+                            changes,
+                            description: log.action_description || '',
+                            metadata: log.metadata || {},
+                            updated: formatDate(log.created_at),
+                            timeAgo: getTimeAgo(log.created_at),
+                            updatedBy: log.created_by_user?.full_name || log.created_by || 'Unknown User',
+                            oldValue: log.old_value,
+                            newValue: log.new_value,
+                            fieldName: log.field_name
+                          };
+                        });
+
+                        const filteredLogs = equipmentSearchQuery
+                          ? equipmentLogs.filter(log =>
+                              log.equipmentType.toLowerCase().includes(equipmentSearchQuery.toLowerCase()) ||
+                              log.tagNumber.toLowerCase().includes(equipmentSearchQuery.toLowerCase()) ||
+                              log.activityInfo.label.toLowerCase().includes(equipmentSearchQuery.toLowerCase()) ||
+                              log.updatedBy.toLowerCase().includes(equipmentSearchQuery.toLowerCase()) ||
+                              log.description.toLowerCase().includes(equipmentSearchQuery.toLowerCase())
+                            )
+                          : equipmentLogs;
+
+                        if (isLoadingEquipmentLogs) {
+                          return (
+                            <div className="text-center py-8 text-gray-500">
+                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-2"></div>
+                              <p>Loading equipment logs...</p>
+                            </div>
+                          );
+                        }
+
+                        if (filteredLogs.length === 0) {
+                          return (
+                            <div className="text-center py-8 text-gray-500">
+                              <Building size={32} className="mx-auto mb-2 text-gray-300" />
+                              <p>No equipment logs match the search criteria.</p>
+                              <p className="text-sm text-gray-400 mt-1">Try adjusting your search terms.</p>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="max-h-96 overflow-y-auto space-y-3 pr-1.5 sm:pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+                            {filteredLogs.map((log) => {
+                              const ActivityIcon = log.activityInfo.icon;
+                              
+                              return (
+                                <div key={log.id} className="bg-white rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all p-3 sm:p-4">
+                                  {/* Header: Equipment Tag + Activity Type Badge */}
+                                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3 mb-3">
+                                    <div className="flex items-center gap-2 flex-wrap min-w-0">
+                                      <span className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-[10px] sm:text-xs md:text-sm font-semibold rounded-lg shadow-sm whitespace-nowrap flex-shrink-0">
+                                        <Building size={12} className="sm:w-[14px] sm:h-[14px] flex-shrink-0" />
+                                        <span className="truncate max-w-[80px] sm:max-w-none">{log.tagNumber}</span>
+                                      </span>
+                                      {!log.metadata?.isBatch && log.equipmentType !== 'Equipment' && (
+                                        <span className="text-[10px] sm:text-xs text-gray-600 font-medium truncate">({log.equipmentType})</span>
+                                      )}
+                                    </div>
+                                    <span className={`inline-flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-full border w-fit ${log.activityInfo.bgColor} ${log.activityInfo.color} ${log.activityInfo.borderColor}`}>
+                                      <ActivityIcon size={10} className="sm:w-3 sm:h-3 flex-shrink-0" />
+                                      <span className="whitespace-nowrap">{log.activityInfo.label}</span>
+                                    </span>
+                                  </div>
+
+                                  {/* Activity-Specific Content */}
+                                  <div className="space-y-2 mb-3">
+                                    {/* Equipment Updates - Show Changes */}
+                                    {(log.activityType === 'equipment_updated' || log.changes.length > 0) && log.changes.length > 0 && (
+                                      <div className="space-y-1.5">
+                                        {log.changes
+                                          .filter(change => {
+                                            // Filter out progress percentage changes if progress_phase is also changing
+                                            // (progress is automatically set based on phase, so it's redundant)
+                                            if (change.field.toLowerCase() === 'progress' || change.field.toLowerCase() === 'progress %') {
+                                              const hasPhaseChange = log.changes.some(c => 
+                                                c.field.toLowerCase() === 'progress phase' || 
+                                                c.field.toLowerCase() === 'progress_phase'
+                                              );
+                                              if (hasPhaseChange) {
+                                                return false; // Hide progress % when phase is changing
+                                              }
+                                            }
+                                            return true;
+                                          })
+                                          .map((change, idx) => (
+                                            <div key={idx} className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs md:text-sm">
+                                              <span className="font-medium text-gray-700 flex-shrink-0">{change.field}:</span>
+                                              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0">
+                                                <span className="px-1.5 sm:px-2 py-0.5 bg-red-50 text-red-700 rounded border border-red-200 line-through text-[10px] sm:text-xs truncate max-w-[120px] sm:max-w-none">{change.old}</span>
+                                                <ArrowRight size={10} className="sm:w-3 sm:h-3 text-gray-400 flex-shrink-0" />
+                                                <span className="px-1.5 sm:px-2 py-0.5 bg-green-50 text-green-700 rounded border border-green-200 font-medium text-[10px] sm:text-xs truncate max-w-[120px] sm:max-w-none">{change.new}</span>
+                                              </div>
+                                            </div>
+                                          ))}
+                                      </div>
+                                    )}
+
+                                    {/* Progress Image Added */}
+                                    {log.activityType === 'progress_image_uploaded' && (
+                                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-[10px] sm:text-xs md:text-sm text-gray-700 flex-wrap">
+                                        <Image size={12} className="sm:w-[14px] sm:h-[14px] text-purple-600 flex-shrink-0" />
+                                        <span className="flex-shrink-0">New progress image added</span>
+                                        {log.metadata?.imageDescription && (
+                                          <span className="text-gray-500 truncate">- {log.metadata.imageDescription}</span>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {/* Technical Specs Updates */}
+                                    {(log.activityType === 'technical_specs_updated' || log.activityType === 'technical_section_added') && (
+                                      <div className="space-y-1.5">
+                                        {log.metadata?.sectionName && (
+                                          <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs md:text-sm mb-2 flex-wrap">
+                                            <Wrench size={12} className="sm:w-[14px] sm:h-[14px] text-orange-600 flex-shrink-0" />
+                                            <span className="font-medium text-gray-700">Section: <span className="text-gray-900 truncate">{log.metadata.sectionName}</span></span>
+                                          </div>
+                                        )}
+                                        {log.changes.length > 0 ? (
+                                          <div className={log.metadata?.sectionName ? "ml-0 sm:ml-5 space-y-1.5" : "space-y-1.5"}>
+                                            {log.changes.map((change, idx) => (
+                                              <div key={idx} className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs md:text-sm">
+                                                <span className="font-medium text-gray-700 flex-shrink-0">{change.field}:</span>
+                                                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0">
+                                                  <span className="px-1.5 sm:px-2 py-0.5 bg-red-50 text-red-700 rounded border border-red-200 line-through text-[10px] sm:text-xs truncate max-w-[120px] sm:max-w-none">{change.old}</span>
+                                                  <ArrowRight size={10} className="sm:w-3 sm:h-3 text-gray-400 flex-shrink-0" />
+                                                  <span className="px-1.5 sm:px-2 py-0.5 bg-green-50 text-green-700 rounded border border-green-200 font-medium text-[10px] sm:text-xs truncate max-w-[120px] sm:max-w-none">{change.new}</span>
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <span className="text-xs text-gray-600">Technical sections updated</span>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {/* Document Added/Updated */}
+                                    {(log.activityType === 'document_uploaded' || log.activityType === 'document_updated') && (
+                                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-[10px] sm:text-xs md:text-sm text-gray-700 flex-wrap">
+                                        <FileCheck size={12} className="sm:w-[14px] sm:h-[14px] text-indigo-600 flex-shrink-0" />
+                                        <span className="font-medium flex-shrink-0">Document:</span>
+                                        <span className="text-gray-900 truncate">{log.metadata?.fileName || log.metadata?.documentName || 'Unknown'}</span>
+                                        {log.metadata?.documentType && (
+                                          <span className="text-gray-500 truncate">({log.metadata.documentType})</span>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {/* Team Member Added */}
+                                    {log.activityType === 'team_member_added' && (
+                                      <div className="space-y-2">
+                                        <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs md:text-sm text-gray-700 flex-wrap">
+                                          <UserPlus size={12} className="sm:w-[14px] sm:h-[14px] text-teal-600 flex-shrink-0" />
+                                          <span className="font-medium truncate">{log.metadata?.memberName || 'Team member'}</span>
+                                          <span className="text-gray-600 flex-shrink-0">added as</span>
+                                          <span className="px-1.5 sm:px-2 py-0.5 bg-teal-50 text-teal-700 rounded border border-teal-200 font-medium whitespace-nowrap flex-shrink-0">
+                                            {log.metadata?.role || 'Member'}
+                                          </span>
+                                        </div>
+                                        {/* Show equipment list for batch entries */}
+                                        {log.metadata?.isBatch && log.metadata?.equipmentList && (
+                                          <div className="ml-0 sm:ml-5 space-y-1">
+                                            <span className="text-[10px] sm:text-xs font-medium text-gray-600">Equipment:</span>
+                                            <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                                              {log.metadata.equipmentList.map((eq: any, idx: number) => (
+                                                <span key={idx} className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 bg-blue-50 text-blue-700 rounded border border-blue-200 truncate max-w-[150px] sm:max-w-none">
+                                                  {eq.tagNumber} ({eq.type})
+                                                </span>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {/* Fallback: Show description if no specific format */}
+                                    {log.changes.length === 0 && 
+                                     !['progress_image_uploaded', 'technical_specs_updated', 'technical_section_added', 'document_uploaded', 'document_updated', 'team_member_added'].includes(log.activityType) && (
+                                      <p className="text-xs sm:text-sm text-gray-600">{log.description}</p>
+                                    )}
+                                  </div>
+
+                                  {/* Footer: Date and User */}
+                                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 pt-2 border-t border-gray-100 text-[10px] sm:text-xs text-gray-500">
+                                    <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap">
+                                      <Clock size={10} className="sm:w-3 sm:h-3 flex-shrink-0" />
+                                      <span className="truncate">{log.updated}</span>
+                                      <span className="text-gray-400 hidden sm:inline">|</span>
+                                      <span className="truncate">{log.timeAgo}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
+                                      <User size={10} className="sm:w-3 sm:h-3 flex-shrink-0" />
+                                      <span className="text-blue-600 font-medium truncate">{log.updatedBy}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* Settings Tab */}
+            <TabsContent value="settings" className="space-y-6 mt-8">
+              <div className="bg-white rounded-2xl shadow-lg border-2 border-gray-200 overflow-hidden">
+                <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 border-b border-gray-200">
+                  <h2 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-800 flex items-center gap-2">
+                    <Settings size={20} className="text-gray-600 sm:w-6 sm:h-6" />
+                    Team & Permissions Settings
+                  </h2>
+                  <p className="text-gray-600 text-xs sm:text-sm mt-1">Manage team members and control access permissions</p>
+                </div>
+                <div className="p-6">
+                  <div className="space-y-6">
+                    {/* Team Management Header */}
+                    <div className="flex items-center justify-between mb-6 sm:mb-8">
+                      <div className="flex-1">
+                        <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-800">Team Members</h3>
+                        <p className="text-xs sm:text-sm text-gray-500 mt-1">Manage who has access to this equipment and their permissions</p>
+                      </div>
+                      <div className="flex items-center gap-2 sm:gap-3 ml-4">
+                        <button
+                          onClick={() => setShowAddMember(true)}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm"
+                        >
+                          <Users size={16} className="sm:w-4 sm:h-4" />
+                          Add Member
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Team Members List */}
+                    <div className="space-y-4">
+                      {teamMembersLoading ? (
+                        <div className="text-center py-6 sm:py-8">
+                          <div className="animate-spin rounded-full h-6 w-6 sm:h-8 sm:w-8 border-b-2 border-blue-600 mx-auto"></div>
+                          <p className="text-gray-500 mt-2 text-xs sm:text-sm">Loading team members...</p>
+                        </div>
+                      ) : teamMembers.length === 0 ? (
+                        <div className="text-center py-6 sm:py-8">
+                          <Users size={36} className="mx-auto text-gray-300 mb-3 sm:mb-4 sm:w-12 sm:h-12" />
+                          <p className="text-gray-500 text-sm sm:text-base">No team members found</p>
+                          <p className="text-xs sm:text-sm text-gray-400 mt-1">Add team members to get started</p>
+                        </div>
+                      ) : (
+                        teamMembers.map((member) => (
+                          <div key={member.id} className="bg-gray-50 border border-gray-200 rounded-lg p-3 sm:p-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0">
+                              <div className="flex items-center gap-2 sm:gap-3 lg:gap-4">
+                                <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <span className="text-blue-600 font-semibold text-xs sm:text-sm lg:text-lg">{member.avatar}</span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <h4 className="font-semibold text-gray-800 text-xs sm:text-sm lg:text-base truncate">{member.name}</h4>
+                                  <p className="text-xs sm:text-sm text-gray-600 truncate">{member.email}</p>
+                                  <div className="flex flex-wrap items-center gap-1 sm:gap-2 mt-1">
+                                    <span className={`inline-flex items-center px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800`}>
+                                      {member.position || 'No Position'}
+                                    </span>
+                                    <span className={`inline-flex items-center px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs font-medium ${member.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                      {member.status}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 sm:gap-2">
+                                <button
+                                  onClick={() => editTeamMember(member)}
+                                  className="px-2 py-1 sm:px-3 sm:py-1 text-xs sm:text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors flex-shrink-0"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => removeTeamMember(member.id)}
+                                  className="px-2 py-1 sm:px-3 sm:py-1 text-xs sm:text-sm bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors flex-shrink-0"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Equipment Assignments */}
+                            <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-gray-200">
+                              <h5 className="text-xs sm:text-sm font-medium text-gray-700 mb-2">Equipment Assignments:</h5>
+                              <div className="flex flex-wrap gap-1 sm:gap-2">
+                                {member.equipmentAssignments && member.equipmentAssignments.length > 0 ? (
+                                  member.equipmentAssignments.map((equipmentId: string, index: number) => {
+                                    // For standalone equipment, show the equipment being viewed
+                                    let displayName = 'This Equipment';
+                                    if (equipmentId === viewingEquipmentId && viewingEquipment) {
+                                      displayName = viewingEquipment.tagNumber || viewingEquipment.type || viewingEquipment.name || 'This Equipment';
+                                    } else if (equipment && equipment.length > 0) {
+                                      // Try to find equipment in the list
+                                      const assignedEquipment = equipment.find(eq => eq.id === equipmentId);
+                                      if (assignedEquipment) {
+                                        displayName = assignedEquipment.manufacturingSerial || assignedEquipment.tagNumber || assignedEquipment.type || equipmentId;
+                                      }
+                                    }
+                                    
+                                    return (
+                                      <span
+                                        key={index}
+                                        className="inline-flex items-center px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200"
+                                      >
+                                        {displayName}
+                                      </span>
+                                    );
+                                  })
+                                ) : (
+                                  <span className="text-xs text-gray-500">No equipment assigned</span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Data Access Levels */}
+                            <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-gray-200">
+                              <h5 className="text-xs sm:text-sm font-medium text-gray-700 mb-2">Data Access:</h5>
+                              <div className="space-y-1 sm:space-y-2">
+                                {member.role === 'project_manager' && (
+                                  <>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-purple-500 rounded-full"></div>
+                                      <span className="text-xs text-gray-600">Full Equipment Access</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-purple-500 rounded-full"></div>
+                                      <span className="text-xs text-gray-600">Can Manage All Equipment</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-purple-500 rounded-full"></div>
+                                      <span className="text-xs text-gray-600">Can Approve VDCR</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-purple-500 rounded-full"></div>
+                                      <span className="text-xs text-gray-600">Can Manage Team Members</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-purple-500 rounded-full"></div>
+                                      <span className="text-xs text-gray-600">Access to All Tabs</span>
+                                    </div>
+                                  </>
+                                )}
+                                {member.role === 'vdcr_manager' && (
+                                  <>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-2 h-2 bg-teal-500 rounded-full"></div>
+                                      <span className="text-xs text-gray-600">VDCR Management Access</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-2 h-2 bg-teal-500 rounded-full"></div>
+                                      <span className="text-xs text-gray-600">Can Approve VDCR</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-2 h-2 bg-teal-500 rounded-full"></div>
+                                      <span className="text-xs text-gray-600">Can View All Equipment</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-2 h-2 bg-teal-500 rounded-full"></div>
+                                      <span className="text-xs text-gray-600">Access to VDCR & Equipment Tabs</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                                      <span className="text-xs text-gray-600">No Access to Settings</span>
+                                    </div>
+                                  </>
+                                )}
+                                {member.role === 'editor' && (
+                                  <>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                      <span className="text-xs text-gray-600">Assigned Equipment Only</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                      <span className="text-xs text-gray-600">Can Add Progress Images</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                      <span className="text-xs text-gray-600">Can Add Progress Entries</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                      <span className="text-xs text-gray-600">Access to VDCR & Other Tabs</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                                      <span className="text-xs text-gray-600">No Access to Settings</span>
+                                    </div>
+                                  </>
+                                )}
+                                {member.role === 'viewer' && (
+                                  <>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
+                                      <span className="text-xs text-gray-600">Read-Only Access</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
+                                      <span className="text-xs text-gray-600">Can View Assigned Equipment</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
+                                      <span className="text-xs text-gray-600">Can View Progress & VDCR</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                                      <span className="text-xs text-gray-600">No Edit Permissions</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                                      <span className="text-xs text-gray-600">No Access to Settings</span>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Access Level Badge */}
+                            <div className="mt-4 pt-4 border-t border-gray-200">
+                              <h5 className="text-sm font-medium text-gray-700 mb-2">Access Level:</h5>
+                              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getRoleColor(member.role)} border`}>
+                                {roles.find(r => r.name === member.role)?.displayName || member.role}
+                              </span>
+                            </div>
+
+                            {/* Permissions Display */}
+                            <div className="mt-4 pt-4 border-t border-gray-200">
+                              <h5 className="text-sm font-medium text-gray-700 mb-2">Permissions:</h5>
+                              <div className="flex flex-wrap gap-2">
+                                {(() => {
+                                  const role = roles.find(r => r.name === member.role);
+                                  const rolePermissions = role ? role.permissions : [];
+                                  return rolePermissions.map((permission, index) => (
+                                    <span
+                                      key={index}
+                                      className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200"
+                                    >
+                                      {getPermissionLabel(permission)}
+                                    </span>
+                                  ));
+                                })()}
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          {/* Add Member Modal */}
+          {showAddMember && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                {/* Header */}
+                <div className="sticky top-0 bg-white border-b border-gray-100 px-3 sm:px-6 py-3 sm:py-4 rounded-t-xl">
+                  <div className="flex items-start sm:items-center justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base sm:text-xl font-semibold text-gray-900">Add New Team Member</h3>
+                      <p className="text-xs sm:text-sm text-gray-500 mt-1">Fill in the details to add a new team member</p>
+                    </div>
+                    <button
+                      onClick={handleCloseAddMember}
+                      className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-full hover:bg-gray-100 flex-shrink-0"
+                    >
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Content */}
+                <div className="p-3 sm:p-6 space-y-4 sm:space-y-8">
+                  {/* Select Existing Member or Add New */}
+                  <div className="space-y-2 sm:space-y-3">
+                    <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                      <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-indigo-500 rounded-full flex-shrink-0"></div>
+                      <h4 className="text-xs sm:text-sm font-semibold text-gray-800 uppercase tracking-wide">Select Team Member</h4>
+                    </div>
+                    <div>
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                        Choose Existing Member or Add New *
+                      </label>
+                      <Select
+                        value={selectedExistingMemberEmail}
+                        onValueChange={(value) => handleExistingMemberSelect(value)}
+                        disabled={isLoadingExistingMembers}
+                        required
+                      >
+                        <SelectTrigger className="w-full h-auto px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white hover:bg-gray-50">
+                          <SelectValue placeholder={isLoadingExistingMembers ? "Loading members..." : "Select or Add New Member..."} />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60 sm:max-h-96">
+                          {existingFirmMembers.length > 0 && (
+                            <>
+                              {existingFirmMembers.map((member, index) => (
+                                <React.Fragment key={member.email}>
+                                  {index > 0 && (
+                                    <div className="border-t border-gray-200 my-1"></div>
+                                  )}
+                                  <SelectItem 
+                                    value={member.email} 
+                                    className="py-2.5 sm:py-3 px-3 sm:px-4 focus:bg-indigo-50"
+                                  >
+                                    <div className="flex flex-col gap-0.5 sm:gap-1 w-full">
+                                      <div className="text-xs sm:text-sm font-medium text-gray-900">
+                                        {member.name}
+                                      </div>
+                                      <div className="text-[10px] sm:text-xs text-gray-600">
+                                        {member.email}
+                                      </div>
+                                      <div className="text-[10px] sm:text-xs text-gray-500">
+                                        {mapRoleToDisplay(member.role || member.access_level || 'viewer')}
+                                      </div>
+                                    </div>
+                                  </SelectItem>
+                                </React.Fragment>
+                              ))}
+                            </>
+                          )}
+                          {existingFirmMembers.length > 0 && (
+                            <div className="border-t border-gray-200 my-1"></div>
+                          )}
+                          <SelectItem value="new" className="text-xs sm:text-sm py-2.5 sm:py-3 px-3 sm:px-4 font-medium text-indigo-600 focus:bg-indigo-50">
+                            ➕ Add New Team Member
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {isExistingMemberMode && (
+                        <p className="mt-2 text-[10px] sm:text-xs text-blue-600 flex items-start gap-1.5">
+                          <svg className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span className="flex-1">Existing member selected. Name, email, phone, and access level are locked. Only position can be edited.</span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Basic Information Section */}
+                  <div className="space-y-3 sm:space-y-5">
+                    <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                      <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
+                      <h4 className="text-xs sm:text-sm font-semibold text-gray-800 uppercase tracking-wide">Basic Information</h4>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5">
+                      <div>
+                        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Full Name *</label>
+                        <input
+                          type="text"
+                          value={newMember.name}
+                          onChange={(e) => setNewMember({ ...newMember, name: e.target.value })}
+                          disabled={isExistingMemberMode}
+                          className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 ${
+                            isExistingMemberMode 
+                              ? 'bg-gray-100 cursor-not-allowed text-gray-600' 
+                              : 'bg-gray-50 hover:bg-white'
+                          }`}
+                          placeholder="Enter full name"
+                          required
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Email Address *</label>
+                        <input
+                          type="email"
+                          value={newMember.email}
+                          onChange={(e) => setNewMember({ ...newMember, email: e.target.value })}
+                          disabled={isExistingMemberMode}
+                          className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 ${
+                            isExistingMemberMode 
+                              ? 'bg-gray-100 cursor-not-allowed text-gray-600' 
+                              : 'bg-gray-50 hover:bg-white'
+                          }`}
+                          placeholder="Enter email address"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5">
+                      <div>
+                        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+                        <input
+                          type="tel"
+                          value={newMember.phone || ''}
+                          onChange={(e) => setNewMember({ ...newMember, phone: e.target.value })}
+                          disabled={isExistingMemberMode}
+                          className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 ${
+                            isExistingMemberMode 
+                              ? 'bg-gray-100 cursor-not-allowed text-gray-600' 
+                              : 'bg-gray-50 hover:bg-white'
+                          }`}
+                          placeholder="Enter phone number"
+                          pattern="[0-9]{10}"
+                          title="Please enter a 10-digit phone number"
+                          maxLength={10}
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Position/Title *</label>
+                        <input
+                          type="text"
+                          value={newMember.position || ''}
+                          onChange={(e) => setNewMember({ ...newMember, position: e.target.value })}
+                          className="w-full px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm border-2 border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white hover:bg-blue-50"
+                          placeholder="e.g., Engineer, Inspector, Manager"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Role & Access Section */}
+                  <div className="space-y-3 sm:space-y-4">
+                    <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                      <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-purple-500 rounded-full flex-shrink-0"></div>
+                      <h4 className="text-xs sm:text-sm font-semibold text-gray-800 uppercase tracking-wide">Role & Access Level</h4>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Select Role *</label>
+                      <Select
+                        value={newMember.role}
+                        onValueChange={(value) => {
+                          const role = value;
+                          setNewMember({
+                            ...newMember, 
+                            role: role,
+                            accessLevel: role === 'Project Manager' ? 'project_manager' : 
+                                        role === 'VDCR Manager' ? 'vdcr_manager' : 
+                                        role === 'Editor' ? 'editor' : 'viewer',
+                            permissions: role === 'Project Manager' ? ['view', 'edit', 'delete', 'manage_team', 'approve_vdcr', 'manage_equipment'] :
+                                       role === 'VDCR Manager' ? ['view', 'edit', 'approve_vdcr', 'manage_vdcr'] :
+                                       role === 'Editor' ? ['view', 'edit', 'manage_equipment'] : ['view', 'comment']
+                          });
+                        }}
+                        disabled={isExistingMemberMode}
+                        required
+                      >
+                        <SelectTrigger className={`w-full h-auto px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200 ${
+                          isExistingMemberMode 
+                            ? 'bg-gray-100 cursor-not-allowed text-gray-600' 
+                            : 'bg-gray-50 hover:bg-white'
+                        }`}>
+                          <SelectValue placeholder="Choose a role..." />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60 sm:max-h-96">
+                          <SelectItem value="Project Manager" className="text-xs sm:text-sm py-2">
+                            Project Manager (Full Access)
+                          </SelectItem>
+                          <SelectItem value="VDCR Manager" className="text-xs sm:text-sm py-2">
+                            VDCR Manager (VDCR Management)
+                          </SelectItem>
+                          <SelectItem value="Editor" className="text-xs sm:text-sm py-2">
+                            Editor (Can Add Progress)
+                          </SelectItem>
+                          <SelectItem value="Viewer" className="text-xs sm:text-sm py-2">
+                            Viewer (Read Only)
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      
+                      {/* Role Description with Data Access */}
+                      {newMember.role && (
+                        <div className="mt-3 sm:mt-4 p-3 sm:p-4 bg-purple-50 rounded-lg border border-purple-200">
+                          <p className="text-[10px] sm:text-xs text-purple-700 font-medium mb-2 sm:mb-3">Default Data Access for Selected Role:</p>
+                          <div className="text-[10px] sm:text-xs text-purple-700 space-y-1 sm:space-y-2">
+                            {(() => {
+                              // Map display role to database role
+                              const roleMapping: Record<string, string> = {
+                                'Project Manager': 'project_manager',
+                                'VDCR Manager': 'vdcr_manager',
+                                'Editor': 'editor',
+                                'Viewer': 'viewer'
+                              };
+                              const dbRole = roleMapping[newMember.role] || 'viewer';
+                              const dataAccess = getDataAccessByRole(dbRole);
+                              
+                              return (
+                                <div className="space-y-1">
+                                  {dataAccess.map((access, index) => (
+                                    <div key={index}>• {access}</div>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="sticky bottom-0 bg-white border-t border-gray-100 px-3 sm:px-6 py-3 sm:py-4 rounded-b-xl">
+                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('Add Team Member button clicked', { 
+                          newMember, 
+                          viewingEquipmentId,
+                          allFieldsValid: !!(newMember.name && newMember.email && newMember.position && newMember.role && viewingEquipmentId)
+                        });
+                        addTeamMember();
+                      }}
+                      disabled={!newMember.name || !newMember.email || !newMember.position || !newMember.role || !viewingEquipmentId}
+                      className="flex-1 px-4 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 text-sm sm:text-base font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+                    >
+                      Add Team Member
+                    </button>
+                    <button
+                      onClick={handleCloseAddMember}
+                      className="flex-1 px-4 sm:px-6 py-2.5 sm:py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 text-sm sm:text-base font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Edit Member Modal */}
+          {showEditMember && selectedMember && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                {/* Header */}
+                <div className="sticky top-0 bg-white border-b border-gray-100 px-3 sm:px-6 py-3 sm:py-4 rounded-t-xl">
+                  <div className="flex items-start sm:items-center justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base sm:text-xl font-semibold text-gray-900">Edit Team Member</h3>
+                      <p className="text-xs sm:text-sm text-gray-500 mt-1">Update the team member's information and permissions</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowEditMember(false);
+                        setSelectedMember(null);
+                        setNewMember({ name: "", email: "", phone: "", position: "", role: "", permissions: [], equipmentAssignments: [], dataAccess: [], accessLevel: "viewer" });
+                      }}
+                      className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-full hover:bg-gray-100 flex-shrink-0"
+                    >
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Content */}
+                <div className="p-3 sm:p-6 space-y-4 sm:space-y-8">
+                  {/* Basic Information Section */}
+                  <div className="space-y-3 sm:space-y-5">
+                    <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                      <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
+                      <h4 className="text-xs sm:text-sm font-semibold text-gray-800 uppercase tracking-wide">Basic Information</h4>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5">
+                      <div>
+                        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Full Name *</label>
+                        <input
+                          type="text"
+                          value={newMember.name}
+                          onChange={(e) => setNewMember({ ...newMember, name: e.target.value })}
+                          className="w-full px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-gray-50 hover:bg-white"
+                          placeholder="Enter full name"
+                          required
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Email Address *</label>
+                        <input
+                          type="email"
+                          value={newMember.email}
+                          onChange={(e) => setNewMember({ ...newMember, email: e.target.value })}
+                          className="w-full px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-gray-50 hover:bg-white"
+                          placeholder="Enter email address"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5">
+                      <div>
+                        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+                        <input
+                          type="tel"
+                          value={newMember.phone || ''}
+                          onChange={(e) => setNewMember({ ...newMember, phone: e.target.value })}
+                          className="w-full px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-gray-50 hover:bg-white"
+                          placeholder="Enter phone number"
+                          pattern="[0-9]{10}"
+                          title="Please enter a 10-digit phone number"
+                          maxLength={10}
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Position/Title *</label>
+                        <input
+                          type="text"
+                          value={newMember.position || ''}
+                          onChange={(e) => setNewMember({ ...newMember, position: e.target.value })}
+                          className="w-full px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-gray-50 hover:bg-white"
+                          placeholder="e.g., Engineer, Inspector, Manager"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Role & Access Section - DISABLED */}
+                  <div className="space-y-3 sm:space-y-4 opacity-60">
+                    <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                      <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-gray-400 rounded-full flex-shrink-0"></div>
+                      <h4 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-wide">Role & Access Level (Read Only)</h4>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs sm:text-sm font-medium text-gray-500 mb-2">Current Role</label>
+                      <div className="w-full px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed">
+                        {newMember.role || 'No role assigned'}
+                      </div>
+                      
+                      {/* Disabled Notice */}
+                      <div className="mt-3 p-2.5 sm:p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <div className="flex items-start gap-2">
+                          <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                          </svg>
+                          <p className="text-[10px] sm:text-xs text-yellow-700 font-medium">Role & Access Level cannot be modified. Contact administrator to change user roles.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="sticky bottom-0 bg-white border-t border-gray-100 px-3 sm:px-6 py-3 sm:py-4 rounded-b-xl">
+                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
+                    <button
+                      onClick={updateTeamMember}
+                      className="flex-1 px-4 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 text-sm sm:text-base font-medium shadow-sm hover:shadow-md"
+                    >
+                      Edit Team Member
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowEditMember(false);
+                        setSelectedMember(null);
+                        setNewMember({ name: "", email: "", phone: "", position: "", role: "", permissions: [], equipmentAssignments: [], dataAccess: [], accessLevel: "viewer" });
+                      }}
+                      className="flex-1 px-4 sm:px-6 py-2.5 sm:py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 text-sm sm:text-base font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Document URL Modal - Always rendered via portal outside conditional returns */}
+      {documentUrlModal && createPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-2 sm:p-4" style={{ zIndex: 99999 }} onClick={() => setDocumentUrlModal(null)}>
+          <div className="bg-white rounded-lg p-3 sm:p-4 md:p-6 max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-2 mb-4">
+              <h3 className="text-sm sm:text-base md:text-lg font-semibold text-gray-800 truncate pr-2">Document: {documentUrlModal.name}</h3>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    window.open(documentUrlModal.url, '_blank');
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm px-2 sm:px-3 h-7 sm:h-8"
+                >
+                  <FileText size={14} className="sm:mr-1 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Open in New Tab</span>
+                  <span className="sm:hidden">Open</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      const response = await fetch(documentUrlModal.url);
+                      const blob = await response.blob();
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = documentUrlModal.name;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                    } catch (error) {
+                      console.error('Error downloading file:', error);
+                      window.open(documentUrlModal.url, '_blank');
+                    }
+                  }}
+                  className="bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm px-2 sm:px-3 h-7 sm:h-8"
+                >
+                  <FileText size={14} className="sm:mr-1 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Download</span>
+                  <span className="sm:hidden">Down</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDocumentUrlModal(null)}
+                  className="text-gray-500 hover:text-gray-700 h-7 sm:h-8 w-7 sm:w-8 p-0"
+                >
+                  <X size={16} className="sm:w-5 sm:h-5" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-3 sm:space-y-4">
+              {(() => {
+                const fileName = documentUrlModal.name.toLowerCase();
+                const isPDF = fileName.endsWith('.pdf');
+                const isImage = fileName.match(/\.(jpg|jpeg|png|gif|webp)$/);
+                
+                if (isPDF) {
+                  return (
+                    <div className="text-center">
+                      <iframe
+                        src={documentUrlModal.url}
+                        className="w-full h-[400px] sm:h-[500px] md:h-[600px] border border-gray-200 rounded-lg"
+                        title={documentUrlModal.name}
+                      />
+                    </div>
+                  );
+                } else if (isImage) {
+                  return (
+                    <div className="text-center">
+                      <img
+                        src={documentUrlModal.url}
+                        alt={documentUrlModal.name}
+                        className="max-w-full h-auto max-h-[400px] sm:max-h-[500px] md:max-h-[600px] rounded-lg border border-gray-200 object-contain mx-auto"
+                      />
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="text-center p-4 sm:p-6 md:p-8 bg-gray-50 rounded border border-gray-200">
+                      <FileText className="w-12 h-12 sm:w-16 sm:h-16 mx-auto text-gray-400 mb-3 sm:mb-4" />
+                      <div className="text-sm sm:text-base md:text-lg font-medium text-gray-600 mb-2 break-words">{documentUrlModal.name}</div>
+                      <div className="text-xs sm:text-sm text-gray-500 mb-3 sm:mb-4 px-2">
+                        This file type cannot be previewed. Please download or open in a new tab to view.
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                        <Button
+                          variant="outline"
+                          onClick={() => window.open(documentUrlModal.url, '_blank')}
+                          className="bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm px-3 sm:px-4 h-8 sm:h-9"
+                        >
+                          <FileText size={14} className="mr-1 sm:w-4 sm:h-4" />
+                          Open in New Tab
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={async () => {
+                            try {
+                              const response = await fetch(documentUrlModal.url);
+                              const blob = await response.blob();
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = documentUrlModal.name;
+                              document.body.appendChild(a);
+                              a.click();
+                              document.body.removeChild(a);
+                              URL.revokeObjectURL(url);
+                            } catch (error) {
+                              console.error('Error downloading file:', error);
+                              window.open(documentUrlModal.url, '_blank');
+                            }
+                          }}
+                          className="bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm px-3 sm:px-4 h-8 sm:h-9"
+                        >
+                          <FileText size={14} className="mr-1 sm:w-4 sm:h-4" />
+                          Download
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                }
+              })()}
+
+              <div className="bg-gray-50 p-3 sm:p-4 rounded-lg">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-xs sm:text-sm">
+                  <div>
+                    <span className="font-medium text-gray-700 block mb-1">File Name:</span>
+                    <div className="text-gray-600 break-words">{documentUrlModal.name}</div>
+                  </div>
+                  {documentUrlModal.uploadedBy && (
+                    <div>
+                      <span className="font-medium text-gray-700 block mb-1">Uploaded By:</span>
+                      <div className="text-gray-600 break-words">{documentUrlModal.uploadedBy}</div>
+                    </div>
+                  )}
+                  {documentUrlModal.uploadDate && (
+                    <div className="sm:col-span-2">
+                      <span className="font-medium text-gray-700 block mb-1">Upload Date:</span>
+                      <div className="text-gray-600">
+                        {new Date(documentUrlModal.uploadDate).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+    );
+  }
+
+  return (
+    <>
     <div className="space-y-6">
 
       {/* Add New Equipment Section */}
@@ -3128,9 +5920,19 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
           
           <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
             <Button 
-              onClick={() => setShowMiniForm(!showMiniForm)}
+              onClick={() => {
+                if (projectId === 'standalone') {
+                  // For standalone equipment, open the modal form
+                  setShowAddEquipmentForm(true);
+                } else {
+                  // For regular projects, toggle the inline mini form
+                  setShowMiniForm(!showMiniForm);
+                }
+              }}
               className={`h-auto px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm whitespace-nowrap ${
-                showMiniForm 
+                projectId === 'standalone' 
+                  ? 'bg-blue-600 hover:bg-blue-700'
+                  : showMiniForm 
                   ? 'bg-gray-400 text-gray-600' 
                   : 'bg-blue-600 hover:bg-blue-700'
               }`}
@@ -3138,17 +5940,19 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
               <Plus size={12} className="sm:w-4 sm:h-4 mr-1 sm:mr-2 flex-shrink-0" />
               Add Equipment
             </Button>
+            {projectId !== 'standalone' && (
             <button 
               onClick={() => setShowMiniForm(!showMiniForm)}
               className={`p-1 sm:p-1.5 text-gray-500 hover:text-gray-700 transition-transform flex-shrink-0 ${showMiniForm ? 'rotate-180' : ''}`}
             >
               <ChevronDown size={12} className="sm:w-4 sm:h-4" />
             </button>
+            )}
           </div>
         </div>
         
         {/* Equipment Filters Section - Same div, below header */}
-        {showMiniForm && (
+        {showMiniForm && projectId !== 'standalone' && (
           <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-gray-200">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4">
               <div>
@@ -3420,7 +6224,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
               return b.id.localeCompare(a.id);
             })
             .map((item) => (
-              <Card key={item.id} className="overflow-hidden hover:shadow-lg transition-shadow relative bg-gray-50 border border-gray-200 h-auto sm:min-h-[420px] flex flex-col">
+              <Card key={item.id} id={`equipment-card-${item.id}`} className="overflow-hidden hover:shadow-lg transition-shadow relative bg-gray-50 border border-gray-200 h-auto sm:min-h-[420px] flex flex-col">
                 <div className="p-3 sm:p-4 flex-1 flex flex-col">
                   {/* PO-CDD Timer Section */}
                   <div className="mb-3 sm:mb-4 p-2 sm:p-2.5 bg-gray-50 border border-gray-200 rounded-md">
@@ -4669,21 +7473,24 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                             Edit Custom Field
                              </Button> */}
 
-                              {/* Manage Team button that redirects to user settings */}
-                              <Button
-                                size="sm"
-                                className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm h-7 sm:h-6 px-2 sm:px-3 whitespace-nowrap"
-                                onClick={() => {
-                                  // Navigate to settings tab
-                                  const event = new CustomEvent('navigateToTab', { 
-                                    detail: { tab: 'settings' } 
-                                  });
-                                  window.dispatchEvent(event);
-                                }}
-                              >
-                                <Plus size={12} className="w-3 h-3 mr-1" />
-                                Manage Team
-                              </Button>
+                              {/* Manage Team button that redirects to Settings tab */}
+                              {projectId === 'standalone' && (
+                                <Button
+                                  size="sm"
+                                  className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm h-7 sm:h-6 px-2 sm:px-3 whitespace-nowrap"
+                                  onClick={() => {
+                                    // Navigate to Settings tab in equipment details view
+                                    setViewingEquipmentId(item.id);
+                                    // Use setTimeout to ensure viewingEquipmentId is set first
+                                    setTimeout(() => {
+                                      setEquipmentDetailsTab('settings');
+                                    }, 100);
+                                  }}
+                                >
+                                  <Plus size={12} className="w-3 h-3 mr-1" />
+                                  Manage Team
+                                </Button>
+                              )}
                               {/* <Button
                                size="sm"
                                variant="outline"
@@ -5486,11 +8293,23 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                             </div>
 
                             {/* Existing Equipment Documents Display */}
-                            {documents[item.id] && documents[item.id].length > 0 && (
+                            {documents[item.id] && documents[item.id]
+                              .filter((doc) => {
+                                // Filter out Core Documents - they should only appear in Details tab
+                                const coreDocumentTypes = ['Unpriced PO File', 'Design Inputs PID', 'Client Reference Doc', 'Other Documents'];
+                                return !coreDocumentTypes.includes(doc.document_type || '');
+                              })
+                              .length > 0 && (
                               <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-md">
                                 <p className="text-sm font-medium text-green-800 mb-2">Existing Equipment Documents:</p>
                                 <div className="space-y-1">
-                                  {documents[item.id].map((doc) => (
+                                  {documents[item.id]
+                                    .filter((doc) => {
+                                      // Filter out Core Documents - they should only appear in Details tab
+                                      const coreDocumentTypes = ['Unpriced PO File', 'Design Inputs PID', 'Client Reference Doc', 'Other Documents'];
+                                      return !coreDocumentTypes.includes(doc.document_type || '');
+                                    })
+                                    .map((doc) => (
                                     <div key={doc.id} className="flex items-center justify-between text-sm">
                                       <div className="flex items-center space-x-2">
                                         <FileText size={14} className="text-green-600" />
@@ -5591,7 +8410,13 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                                   <Skeleton className="h-4 w-1/2" />
                                 </div>
                               ) : documents[item.id] && documents[item.id].length > 0 ? (
-                                documents[item.id].map((doc) => {
+                                documents[item.id]
+                                  .filter((doc) => {
+                                    // Filter out Core Documents - they should only appear in Details tab
+                                    const coreDocumentTypes = ['Unpriced PO File', 'Design Inputs PID', 'Client Reference Doc', 'Other Documents'];
+                                    return !coreDocumentTypes.includes(doc.document_type || '');
+                                  })
+                                  .map((doc) => {
                                   const getDocumentCategory = (fileName: string) => {
                                     const ext = fileName.split('.').pop()?.toLowerCase();
                                     if (['pdf'].includes(ext || '')) return 'PDF';
@@ -5720,8 +8545,28 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                         </Button>
                       </>
                     ) : (
-                      // View Mode - Show Edit/Complete/Delete
+                      // View Mode - Show View (standalone only)/Edit/Complete/Delete
                       <>
+                        {/* View button - only for standalone equipment */}
+                        {projectId === 'standalone' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1 bg-white hover:bg-purple-50 border-purple-200 hover:border-purple-300 text-purple-700 text-xs sm:text-sm"
+                            onClick={() => {
+                              if (onViewDetails) {
+                                onViewDetails();
+                              } else {
+                                // Set viewing equipment ID to show details view
+                                setViewingEquipmentId(item.id);
+                              }
+                            }}
+                          >
+                            <Eye size={14} className="mr-1" />
+                            View
+                          </Button>
+                        )}
+
                         <Button
                           size="sm"
                           variant="outline"
@@ -6037,181 +8882,20 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         </div>
       )}
 
-      {/* Document URL Modal - for database documents */}
-      {documentUrlModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-2 sm:p-4" onClick={() => setDocumentUrlModal(null)}>
-          <div className="bg-white rounded-lg p-3 sm:p-4 md:p-6 max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-2 mb-4">
-              <h3 className="text-sm sm:text-base md:text-lg font-semibold text-gray-800 truncate pr-2">Document: {documentUrlModal.name}</h3>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    window.open(documentUrlModal.url, '_blank');
-                  }}
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm px-2 sm:px-3 h-7 sm:h-8"
-                >
-                  <FileText size={14} className="sm:mr-1 sm:w-4 sm:h-4" />
-                  <span className="hidden sm:inline">Open in New Tab</span>
-                  <span className="sm:hidden">Open</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
-                    try {
-                      // Fetch the file as a blob to force download
-                      const response = await fetch(documentUrlModal.url);
-                      const blob = await response.blob();
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = documentUrlModal.name;
-                      document.body.appendChild(a);
-                      a.click();
-                      document.body.removeChild(a);
-                      URL.revokeObjectURL(url);
-                    } catch (error) {
-                      console.error('Error downloading file:', error);
-                      // Fallback: open in new tab if download fails
-                      window.open(documentUrlModal.url, '_blank');
-                    }
-                  }}
-                  className="bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm px-2 sm:px-3 h-7 sm:h-8"
-                >
-                  <FileText size={14} className="sm:mr-1 sm:w-4 sm:h-4" />
-                  <span className="hidden sm:inline">Download</span>
-                  <span className="sm:hidden">Down</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setDocumentUrlModal(null)}
-                  className="text-gray-500 hover:text-gray-700 h-7 sm:h-8 w-7 sm:w-8 p-0"
-                >
-                  <X size={16} className="sm:w-5 sm:h-5" />
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-3 sm:space-y-4">
-              {/* Determine file type and render accordingly */}
-              {(() => {
-                const fileName = documentUrlModal.name.toLowerCase();
-                const isPDF = fileName.endsWith('.pdf');
-                const isImage = fileName.match(/\.(jpg|jpeg|png|gif|webp)$/);
-                
-                if (isPDF) {
-                  return (
-                    <div className="text-center">
-                      <iframe
-                        src={documentUrlModal.url}
-                        className="w-full h-[400px] sm:h-[500px] md:h-[600px] border border-gray-200 rounded-lg"
-                        title={documentUrlModal.name}
-                      />
-                    </div>
-                  );
-                } else if (isImage) {
-                  return (
-                    <div className="text-center">
-                      <img
-                        src={documentUrlModal.url}
-                        alt={documentUrlModal.name}
-                        className="max-w-full h-auto max-h-[400px] sm:max-h-[500px] md:max-h-[600px] rounded-lg border border-gray-200 object-contain mx-auto"
-                      />
-                    </div>
-                  );
-                } else {
-                  return (
-                    <div className="text-center p-4 sm:p-6 md:p-8 bg-gray-50 rounded border border-gray-200">
-                      <FileText className="w-12 h-12 sm:w-16 sm:h-16 mx-auto text-gray-400 mb-3 sm:mb-4" />
-                      <div className="text-sm sm:text-base md:text-lg font-medium text-gray-600 mb-2 break-words">{documentUrlModal.name}</div>
-                      <div className="text-xs sm:text-sm text-gray-500 mb-3 sm:mb-4 px-2">
-                        This file type cannot be previewed. Please download or open in a new tab to view.
-                      </div>
-                      <div className="flex flex-col sm:flex-row gap-2 justify-center">
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            window.open(documentUrlModal.url, '_blank');
-                          }}
-                          className="bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm px-3 sm:px-4 h-8 sm:h-9"
-                        >
-                          <FileText size={14} className="mr-1 sm:w-4 sm:h-4" />
-                          Open in New Tab
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={async () => {
-                            try {
-                              // Fetch the file as a blob to force download
-                              const response = await fetch(documentUrlModal.url);
-                              const blob = await response.blob();
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement('a');
-                              a.href = url;
-                              a.download = documentUrlModal.name;
-                              document.body.appendChild(a);
-                              a.click();
-                              document.body.removeChild(a);
-                              URL.revokeObjectURL(url);
-                            } catch (error) {
-                              console.error('Error downloading file:', error);
-                              // Fallback: open in new tab if download fails
-                              window.open(documentUrlModal.url, '_blank');
-                            }
-                          }}
-                          className="bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm px-3 sm:px-4 h-8 sm:h-9"
-                        >
-                          <FileText size={14} className="mr-1 sm:w-4 sm:h-4" />
-                          Download
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                }
-              })()}
-
-              {/* Document Information */}
-              <div className="bg-gray-50 p-3 sm:p-4 rounded-lg">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-xs sm:text-sm">
-                  <div>
-                    <span className="font-medium text-gray-700 block mb-1">File Name:</span>
-                    <div className="text-gray-600 break-words">{documentUrlModal.name}</div>
-                  </div>
-                  {documentUrlModal.uploadedBy && (
-                    <div>
-                      <span className="font-medium text-gray-700 block mb-1">Uploaded By:</span>
-                      <div className="text-gray-600 break-words">{documentUrlModal.uploadedBy}</div>
-                    </div>
-                  )}
-                  {documentUrlModal.uploadDate && (
-                    <div className="sm:col-span-2">
-                      <span className="font-medium text-gray-700 block mb-1">Upload Date:</span>
-                      <div className="text-gray-600">
-                        {new Date(documentUrlModal.uploadDate).toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Add Equipment Form Modal */}
       {showAddEquipmentForm && (
+        projectId === 'standalone' ? (
+          <AddStandaloneEquipmentFormNew
+            onClose={() => setShowAddEquipmentForm(false)}
+            onSubmit={handleAddStandaloneEquipment}
+          />
+        ) : (
         <AddEquipmentForm
           onClose={() => setShowAddEquipmentForm(false)}
           onSubmit={handleAddEquipment}
           projectId={projectId}
         />
+        )
       )}
 
       {/* Progress Image Modal */}
@@ -6469,7 +9153,177 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
           </div>
         </div>
       )}
+
+      {/* Document URL Modal - for database documents - Always rendered via portal outside conditional returns */}
+      {documentUrlModal && createPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-2 sm:p-4" style={{ zIndex: 99999 }} onClick={() => setDocumentUrlModal(null)}>
+          <div className="bg-white rounded-lg p-3 sm:p-4 md:p-6 max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-2 mb-4">
+              <h3 className="text-sm sm:text-base md:text-lg font-semibold text-gray-800 truncate pr-2">Document: {documentUrlModal.name}</h3>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    window.open(documentUrlModal.url, '_blank');
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm px-2 sm:px-3 h-7 sm:h-8"
+                >
+                  <FileText size={14} className="sm:mr-1 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Open in New Tab</span>
+                  <span className="sm:hidden">Open</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      // Fetch the file as a blob to force download
+                      const response = await fetch(documentUrlModal.url);
+                      const blob = await response.blob();
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = documentUrlModal.name;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                    } catch (error) {
+                      console.error('Error downloading file:', error);
+                      // Fallback: open in new tab if download fails
+                      window.open(documentUrlModal.url, '_blank');
+                    }
+                  }}
+                  className="bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm px-2 sm:px-3 h-7 sm:h-8"
+                >
+                  <FileText size={14} className="sm:mr-1 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Download</span>
+                  <span className="sm:hidden">Down</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDocumentUrlModal(null)}
+                  className="text-gray-500 hover:text-gray-700 h-7 sm:h-8 w-7 sm:w-8 p-0"
+                >
+                  <X size={16} className="sm:w-5 sm:h-5" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-3 sm:space-y-4">
+              {/* Determine file type and render accordingly */}
+              {(() => {
+                const fileName = documentUrlModal.name.toLowerCase();
+                const isPDF = fileName.endsWith('.pdf');
+                const isImage = fileName.match(/\.(jpg|jpeg|png|gif|webp)$/);
+                
+                if (isPDF) {
+                  return (
+                    <div className="text-center">
+                      <iframe
+                        src={documentUrlModal.url}
+                        className="w-full h-[400px] sm:h-[500px] md:h-[600px] border border-gray-200 rounded-lg"
+                        title={documentUrlModal.name}
+                      />
+                    </div>
+                  );
+                } else if (isImage) {
+                  return (
+                    <div className="text-center">
+                      <img
+                        src={documentUrlModal.url}
+                        alt={documentUrlModal.name}
+                        className="max-w-full h-auto max-h-[400px] sm:max-h-[500px] md:max-h-[600px] rounded-lg border border-gray-200 object-contain mx-auto"
+                      />
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="text-center p-4 sm:p-6 md:p-8 bg-gray-50 rounded border border-gray-200">
+                      <FileText className="w-12 h-12 sm:w-16 sm:h-16 mx-auto text-gray-400 mb-3 sm:mb-4" />
+                      <div className="text-sm sm:text-base md:text-lg font-medium text-gray-600 mb-2 break-words">{documentUrlModal.name}</div>
+                      <div className="text-xs sm:text-sm text-gray-500 mb-3 sm:mb-4 px-2">
+                        This file type cannot be previewed. Please download or open in a new tab to view.
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            window.open(documentUrlModal.url, '_blank');
+                          }}
+                          className="bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm px-3 sm:px-4 h-8 sm:h-9"
+                        >
+                          <FileText size={14} className="mr-1 sm:w-4 sm:h-4" />
+                          Open in New Tab
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={async () => {
+                            try {
+                              // Fetch the file as a blob to force download
+                              const response = await fetch(documentUrlModal.url);
+                              const blob = await response.blob();
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = documentUrlModal.name;
+                              document.body.appendChild(a);
+                              a.click();
+                              document.body.removeChild(a);
+                              URL.revokeObjectURL(url);
+                            } catch (error) {
+                              console.error('Error downloading file:', error);
+                              // Fallback: open in new tab if download fails
+                              window.open(documentUrlModal.url, '_blank');
+                            }
+                          }}
+                          className="bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm px-3 sm:px-4 h-8 sm:h-9"
+                        >
+                          <FileText size={14} className="mr-1 sm:w-4 sm:h-4" />
+                          Download
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                }
+              })()}
+
+              {/* Document Information */}
+              <div className="bg-gray-50 p-3 sm:p-4 rounded-lg">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-xs sm:text-sm">
+                  <div>
+                    <span className="font-medium text-gray-700 block mb-1">File Name:</span>
+                    <div className="text-gray-600 break-words">{documentUrlModal.name}</div>
+                  </div>
+                  {documentUrlModal.uploadedBy && (
+                    <div>
+                      <span className="font-medium text-gray-700 block mb-1">Uploaded By:</span>
+                      <div className="text-gray-600 break-words">{documentUrlModal.uploadedBy}</div>
+                    </div>
+                  )}
+                  {documentUrlModal.uploadDate && (
+                    <div className="sm:col-span-2">
+                      <span className="font-medium text-gray-700 block mb-1">Upload Date:</span>
+                      <div className="text-gray-600">
+                        {new Date(documentUrlModal.uploadDate).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
+    </>
   );
 };
 

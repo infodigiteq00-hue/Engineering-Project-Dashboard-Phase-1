@@ -196,6 +196,94 @@ export const activityApi = {
       console.error('❌ Error fetching activity statistics:', error);
       throw error;
     }
+  },
+
+  // ============================================================================
+  // STANDALONE EQUIPMENT ACTIVITY LOGS
+  // ============================================================================
+
+  // Log standalone equipment activity (separate table)
+  async logStandaloneEquipmentActivity(data: {
+    equipmentId: string;
+    activityType: string;
+    actionDescription: string;
+    fieldName?: string;
+    oldValue?: string;
+    newValue?: string;
+    metadata?: any;
+    createdBy: string;
+  }) {
+    try {
+      // console.log('📝 Logging standalone equipment activity:', data);
+      
+      const logData = {
+        equipment_id: data.equipmentId,
+        activity_type: data.activityType,
+        action_description: data.actionDescription,
+        field_name: data.fieldName || null,
+        old_value: data.oldValue || null,
+        new_value: data.newValue || null,
+        metadata: data.metadata || {},
+        created_by: data.createdBy
+      };
+
+      const response = await api.post('/standalone_equipment_activity_logs', logData);
+      // console.log('✅ Standalone equipment activity logged successfully:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error logging standalone equipment activity:', error);
+      // Don't throw error to prevent breaking the main action
+      return null;
+    }
+  },
+
+  // Get activity logs for specific standalone equipment
+  async getStandaloneEquipmentActivityLogsByEquipment(equipmentId: string, filters?: {
+    activityType?: string;
+    userId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    try {
+      // console.log('📋 Fetching activity logs for standalone equipment:', equipmentId);
+      
+      let query = `/standalone_equipment_activity_logs?equipment_id=eq.${equipmentId}`;
+      
+      // Add filters
+      if (filters?.activityType) {
+        query += `&activity_type=eq.${filters.activityType}`;
+      }
+      if (filters?.userId) {
+        query += `&created_by=eq.${filters.userId}`;
+      }
+      if (filters?.dateFrom) {
+        query += `&created_at=gte.${filters.dateFrom}`;
+      }
+      if (filters?.dateTo) {
+        query += `&created_at=lte.${filters.dateTo}`;
+      }
+      
+      // Add ordering and pagination
+      query += `&order=created_at.desc`;
+      if (filters?.limit) {
+        query += `&limit=${filters.limit}`;
+      }
+      if (filters?.offset) {
+        query += `&offset=${filters.offset}`;
+      }
+      
+      // Add user information
+      query += `&select=*,created_by_user:created_by(full_name,email)`;
+      
+      const response = await api.get(query);
+      // console.log('✅ Standalone equipment activity logs fetched successfully:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error fetching standalone equipment activity logs:', error);
+      throw error;
+    }
   }
 };
 

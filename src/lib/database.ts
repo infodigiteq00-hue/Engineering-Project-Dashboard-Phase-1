@@ -307,7 +307,7 @@ export class DatabaseService {
     return data
   }
 
-  // TEAM POSITIONS OPERATIONS
+  // TEAM POSITIONS OPERATIONS (for project equipment)
   static async createTeamPosition(position: InsertTables<'team_positions'>) {
     const { data, error } = await supabase
       .from('team_positions')
@@ -325,6 +325,110 @@ export class DatabaseService {
       .select('*')
       .eq('equipment_id', equipmentId)
       .order('created_at', { ascending: false })
+    
+    if (error) throw error
+    return data
+  }
+
+  // STANDALONE EQUIPMENT TEAM POSITIONS OPERATIONS
+  static async createStandaloneTeamPosition(position: {
+    equipment_id: string;
+    position_name: string;
+    person_name: string;
+    email?: string;
+    phone?: string;
+    role?: 'editor' | 'viewer';
+    assigned_by?: string;
+  }) {
+    const { data, error } = await supabase
+      .from('standalone_equipment_team_positions')
+      .insert(position)
+      .select()
+      .single()
+    
+    if (error) throw error
+    return data
+  }
+
+  static async getStandaloneTeamPositions(equipmentId: string) {
+    try {
+      console.log('🔍 getStandaloneTeamPositions: Fetching for equipment:', equipmentId);
+      console.log('🔍 Equipment ID type:', typeof equipmentId);
+      console.log('🔍 Equipment ID length:', equipmentId?.length);
+      
+      // Use REST API instead of Supabase client to avoid hanging issues
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      const queryUrl = `${SUPABASE_URL}/rest/v1/standalone_equipment_team_positions?equipment_id=eq.${equipmentId}&order=created_at.desc`;
+      console.log('📤 getStandaloneTeamPositions: Query URL:', queryUrl);
+      console.log('📤 getStandaloneTeamPositions: Query prepared, executing via REST API...');
+      
+      const response = await fetch(queryUrl, {
+        method: 'GET',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation'
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Error fetching standalone team positions:', response.status, errorText);
+        return [];
+      }
+      
+      const data = await response.json();
+      
+      console.log('📊 getStandaloneTeamPositions: Supabase response received');
+      console.log('   - data:', data);
+      console.log('   - data type:', typeof data);
+      console.log('   - data is array:', Array.isArray(data));
+      console.log('   - data length:', data?.length);
+      
+      // Return empty array if no data
+      const result = Array.isArray(data) ? data : (data ? [data] : []);
+      console.log('✅ getStandaloneTeamPositions: Returning', result.length, 'members');
+      console.log('   - Members:', result);
+      return result;
+    } catch (error: any) {
+      console.error('❌ Error in getStandaloneTeamPositions (catch block):', error);
+      console.error('   - Error type:', typeof error);
+      console.error('   - Error message:', error?.message);
+      console.error('   - Error:', error);
+      
+      // Return empty array on error instead of throwing
+      return [];
+    }
+  }
+
+  static async updateStandaloneTeamPosition(id: string, updates: {
+    position_name?: string;
+    person_name?: string;
+    email?: string;
+    phone?: string;
+    role?: 'editor' | 'viewer';
+  }) {
+    const { data, error } = await supabase
+      .from('standalone_equipment_team_positions')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single()
+    
+    if (error) throw error
+    return data
+  }
+
+  static async deleteStandaloneTeamPosition(id: string) {
+    const { data, error } = await supabase
+      .from('standalone_equipment_team_positions')
+      .delete()
+      .eq('id', id)
+      .select()
+      .single()
     
     if (error) throw error
     return data

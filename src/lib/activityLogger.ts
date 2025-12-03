@@ -73,7 +73,7 @@ const getCurrentUserName = (): string => {
 
 // Main activity logging function
 export const logActivity = async (data: {
-  projectId: string | null; // Nullable to support standalone equipment
+  projectId: string | null | undefined; // Nullable/undefined for standalone equipment (standalone equipment has no projectId)
   equipmentId?: string;
   activityType: ActivityType;
   actionDescription: string;
@@ -87,19 +87,37 @@ export const logActivity = async (data: {
     const userId = getCurrentUserId();
     // console.log('🔍 Current user ID:', userId);
     
-    const result = await activityApi.logEquipmentActivity({
-      projectId: data.projectId,
-      equipmentId: data.equipmentId,
-      activityType: data.activityType,
-      actionDescription: data.actionDescription,
-      fieldName: data.fieldName,
-      oldValue: data.oldValue,
-      newValue: data.newValue,
-      metadata: data.metadata,
-      createdBy: userId
-    });
+    // Use standalone equipment table if projectId is null, undefined, or 'standalone' (standalone equipment has no project)
+    // Standalone equipment has no projectId - only equipmentId is available
+    const isStandalone = data.projectId === null || data.projectId === undefined || data.projectId === 'standalone';
     
-    // console.log('✅ Activity logged successfully:', result);
+    if (isStandalone && data.equipmentId) {
+      const result = await activityApi.logStandaloneEquipmentActivity({
+        equipmentId: data.equipmentId,
+        activityType: data.activityType,
+        actionDescription: data.actionDescription,
+        fieldName: data.fieldName,
+        oldValue: data.oldValue,
+        newValue: data.newValue,
+        metadata: data.metadata,
+        createdBy: userId
+      });
+      // console.log('✅ Standalone equipment activity logged successfully:', result);
+    } else if (data.projectId && data.equipmentId) {
+      // Use regular equipment_activity_logs table for project equipment (projectId must be a valid UUID)
+      const result = await activityApi.logEquipmentActivity({
+        projectId: data.projectId,
+        equipmentId: data.equipmentId,
+        activityType: data.activityType,
+        actionDescription: data.actionDescription,
+        fieldName: data.fieldName,
+        oldValue: data.oldValue,
+        newValue: data.newValue,
+        metadata: data.metadata,
+        createdBy: userId
+      });
+      // console.log('✅ Activity logged successfully:', result);
+    }
   } catch (error) {
     console.error('❌ Failed to log activity:', error);
     // Don't throw error to prevent breaking the main action
@@ -202,7 +220,7 @@ export const logTechnicalSectionDetailedUpdate = async (projectId: string, equip
 };
 
 // Document logging
-export const logDocumentUploaded = async (projectId: string, equipmentId: string, equipmentType: string, tagNumber: string, documentType: string, fileName: string) => {
+export const logDocumentUploaded = async (projectId: string | null, equipmentId: string, equipmentType: string, tagNumber: string, documentType: string, fileName: string) => {
   await logActivity({
     projectId,
     equipmentId,
@@ -212,7 +230,7 @@ export const logDocumentUploaded = async (projectId: string, equipmentId: string
   });
 };
 
-export const logDocumentDeleted = async (projectId: string, equipmentId: string, equipmentType: string, tagNumber: string, documentType: string, fileName: string) => {
+export const logDocumentDeleted = async (projectId: string | null, equipmentId: string, equipmentType: string, tagNumber: string, documentType: string, fileName: string) => {
   await logActivity({
     projectId,
     equipmentId,
@@ -222,7 +240,7 @@ export const logDocumentDeleted = async (projectId: string, equipmentId: string,
   });
 };
 
-export const logProgressImageUploaded = async (projectId: string, equipmentId: string, equipmentType: string, tagNumber: string, imageDescription?: string) => {
+export const logProgressImageUploaded = async (projectId: string | null, equipmentId: string, equipmentType: string, tagNumber: string, imageDescription?: string) => {
   await logActivity({
     projectId,
     equipmentId,
@@ -279,7 +297,7 @@ export const logProjectDeleted = async (projectId: string, projectName: string) 
 };
 
 // Progress entry logging
-export const logProgressEntryAdded = async (projectId: string, equipmentId: string, equipmentType: string, tagNumber: string, entryType: string, entryText: string) => {
+export const logProgressEntryAdded = async (projectId: string | null, equipmentId: string, equipmentType: string, tagNumber: string, entryType: string, entryText: string) => {
   await logActivity({
     projectId,
     equipmentId,
@@ -289,7 +307,7 @@ export const logProgressEntryAdded = async (projectId: string, equipmentId: stri
   });
 };
 
-export const logProgressEntryUpdated = async (projectId: string, equipmentId: string, equipmentType: string, tagNumber: string, entryType: string, entryText: string, hasAudio: boolean = false, hasImage: boolean = false) => {
+export const logProgressEntryUpdated = async (projectId: string | null, equipmentId: string, equipmentType: string, tagNumber: string, entryType: string, entryText: string, hasAudio: boolean = false, hasImage: boolean = false) => {
   let description = `${entryType} progress entry updated for "${equipmentType}" (${tagNumber}): ${entryText.substring(0, 100)}${entryText.length > 100 ? '...' : ''}`;
   if (hasAudio || hasImage) {
     const attachments = [];
@@ -307,7 +325,7 @@ export const logProgressEntryUpdated = async (projectId: string, equipmentId: st
   });
 };
 
-export const logProgressEntryDeleted = async (projectId: string, equipmentId: string, equipmentType: string, tagNumber: string, entryType: string, entryText: string) => {
+export const logProgressEntryDeleted = async (projectId: string | null, equipmentId: string, equipmentType: string, tagNumber: string, entryType: string, entryText: string) => {
   await logActivity({
     projectId,
     equipmentId,
@@ -318,7 +336,7 @@ export const logProgressEntryDeleted = async (projectId: string, equipmentId: st
 };
 
 // Team member logging
-export const logTeamMemberAdded = async (projectId: string, equipmentId: string, equipmentType: string, tagNumber: string, memberName: string, role: string) => {
+export const logTeamMemberAdded = async (projectId: string | null, equipmentId: string, equipmentType: string, tagNumber: string, memberName: string, role: string) => {
   await logActivity({
     projectId,
     equipmentId,
@@ -383,7 +401,7 @@ export const logTeamMemberAddedBatch = async (
   });
 };
 
-export const logTeamMemberRemoved = async (projectId: string, equipmentId: string, equipmentType: string, tagNumber: string, memberName: string, role: string) => {
+export const logTeamMemberRemoved = async (projectId: string | null, equipmentId: string, equipmentType: string, tagNumber: string, memberName: string, role: string) => {
   await logActivity({
     projectId,
     equipmentId,
