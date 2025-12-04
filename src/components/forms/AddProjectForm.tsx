@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
-import { X, Save, Upload, Users, FileText, Settings, Building2, Plus, CheckCircle, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Pencil, UserPlus } from "lucide-react";
+import { X, Save, Upload, Users, FileText, Settings, Building2, Plus, CheckCircle, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Pencil, UserPlus, Loader2 } from "lucide-react";
 import { designSystem } from "@/lib/design-system";
 import { fastAPI, uploadUnpricedPODocument, uploadDesignInputsDocument, uploadClientReferenceDocument, uploadOtherDocument, uploadEquipmentDocument, updateProjectDocumentLinks } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
@@ -4340,12 +4340,26 @@ Industry: Petrochemical`;
           {showSuccessScreen ? (
             renderSuccessScreen()
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Current Step Content */}
-              {renderCurrentStep()}
+            <div className="relative">
+              {/* Loading Overlay */}
+              {isSubmitting && (
+                <div className="absolute inset-0 bg-white bg-opacity-95 flex flex-col items-center justify-center z-50 rounded-lg">
+                  <Loader2 className="h-12 w-12 text-blue-600 animate-spin mb-4" />
+                  <p className="text-lg font-semibold text-gray-800 mb-2">
+                    {isEditMode ? 'Updating Project...' : 'Creating Project...'}
+                  </p>
+                  <p className="text-sm text-gray-600 text-center px-4">
+                    Please wait while we {isEditMode ? 'update' : 'create'} your project. This may take a few seconds.
+                  </p>
+                </div>
+              )}
+              
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Current Step Content */}
+                {renderCurrentStep()}
 
-              {/* Navigation */}
-              <div className="flex flex-col sm:flex-row justify-between gap-3 sm:gap-0 pt-4 sm:pt-6 border-t border-gray-200">
+                {/* Navigation */}
+                <div className="flex flex-col sm:flex-row justify-between gap-3 sm:gap-0 pt-4 sm:pt-6 border-t border-gray-200">
               <Button
                 type="button"
                 variant="outline"
@@ -4370,18 +4384,26 @@ Industry: Petrochemical`;
                 ) : (
                   <Button 
                     type="submit" 
-                    className="flex-1 sm:flex-initial px-4 sm:px-6 py-2 text-xs sm:text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                    className="flex-1 sm:flex-initial px-4 sm:px-6 py-2 text-xs sm:text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
                     disabled={isAnimating || isSubmitting}
                      onClick={() => {
                        // console.log('🔘 Create button clicked!');
                      }}
                   >
-                    {isEditMode ? 'Update Project' : 'Create Project'}
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        {isEditMode ? 'Updating Project...' : 'Creating Project...'}
+                      </>
+                    ) : (
+                      isEditMode ? 'Update Project' : 'Create Project'
+                    )}
                   </Button>
                 )}
               </div>
             </div>
             </form>
+            </div>
           )}
         </div>
       </Card>

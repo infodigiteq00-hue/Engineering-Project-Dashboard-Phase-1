@@ -448,31 +448,61 @@ const Index = () => {
       const updatedProjects = await fastAPI.getProjectsByFirm(firmId, userRole || undefined, userId || undefined);
       
       // Transform Supabase data to match our project structure
-      const transformedProjects = (updatedProjects as any[]).map((project: any) => ({
-        id: project.id,
-        name: project.name,
-        client: project.client,
-        location: project.location || 'TBD',
-        equipmentCount: project.equipment_count || 0,
-        activeEquipment: project.active_equipment || 0,
-        progress: project.progress || 0,
-        status: project.status || 'active',
-        manager: project.manager || 'TBD',
-        deadline: project.deadline || 'TBD',
-        poNumber: project.po_number || 'TBD',
-        scopeOfWork: project.scope_of_work || '',
-        // Add default values for other fields
-        salesOrderDate: '',
-        clientIndustry: 'Petrochemical',
-        servicesIncluded: [],
-        consultant: 'ABC Consultants',
-        tpiAgency: 'Bureau Veritas',
-        clientFocalPoint: 'Not specified',
-        vdcrManager: 'Quality Team Lead',
-        kickoffMeetingNotes: '',
-        specialProductionNotes: '',
-        equipmentBreakdown: {}
-      }));
+      const transformedProjects = (updatedProjects as any[]).map((project: any) => {
+        // Calculate equipment breakdown from equipment data (same as fetchProjectsFromSupabase)
+        let equipmentBreakdown = {};
+        if (project.equipment && Array.isArray(project.equipment) && project.equipment.length > 0) {
+          const equipment = project.equipment;
+          const standardTypes = ['Heat Exchanger', 'Pressure Vessel', 'Storage Tank', 'Reactor'];
+          const otherEquipment = equipment.filter((eq: any) => !standardTypes.includes(eq.type));
+          
+          // Create breakdown with actual equipment names for "other" types
+          equipmentBreakdown = {
+            heatExchanger: equipment.filter((eq: any) => eq.type === 'Heat Exchanger').length,
+            pressureVessel: equipment.filter((eq: any) => eq.type === 'Pressure Vessel').length,
+            storageTank: equipment.filter((eq: any) => eq.type === 'Storage Tank').length,
+            reactor: equipment.filter((eq: any) => eq.type === 'Reactor').length,
+            // Add actual equipment types instead of generic "other"
+            ...otherEquipment.reduce((acc: any, eq: any) => {
+              const typeKey = eq.type.replace(/\s+/g, '').toLowerCase();
+              acc[typeKey] = (acc[typeKey] || 0) + 1;
+              return acc;
+            }, {})
+          };
+        }
+
+        return {
+          id: project.id,
+          name: project.name,
+          client: project.client,
+          location: project.location || 'TBD',
+          equipmentCount: project.equipment_count || project.equipmentCount || (project.equipment?.length || 0),
+          activeEquipment: project.active_equipment || 0,
+          progress: project.progress || 0,
+          status: project.status || 'active',
+          manager: project.manager || 'TBD',
+          deadline: project.deadline || 'TBD',
+          poNumber: project.po_number || 'TBD',
+          scopeOfWork: project.scope_of_work || '',
+          // Add default values for other fields
+          salesOrderDate: project.sales_order_date || '',
+          clientIndustry: project.client_industry || 'Petrochemical',
+          servicesIncluded: project.services_included ? 
+            (typeof project.services_included === 'object' ? 
+              Object.entries(project.services_included)
+                .filter(([_, value]) => value === true)
+                .map(([key, _]) => key) : 
+              project.services_included) : [],
+          consultant: project.consultant || 'ABC Consultants',
+          tpiAgency: project.tpi_agency || 'Bureau Veritas',
+          clientFocalPoint: project.client_focal_point || 'Not specified',
+          vdcrManager: project.vdcr_manager || 'Quality Team Lead',
+          kickoffMeetingNotes: project.kickoff_meeting_notes || '',
+          specialProductionNotes: project.special_production_notes || '',
+          equipmentBreakdown: equipmentBreakdown,
+          equipment: project.equipment || []
+        };
+      });
 
       // Update state with fresh data from Supabase
       setProjects(transformedProjects);

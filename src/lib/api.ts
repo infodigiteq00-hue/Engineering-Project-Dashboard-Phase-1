@@ -1325,6 +1325,58 @@ export const fastAPI = {
     }
   },
 
+  // Get all progress images (for company highlights - Key Progress section)
+  async getAllProgressImages(startDate?: string, endDate?: string, projectIds?: string[]) {
+    try {
+      // Fetch progress images with equipment and projects
+      let url = `/equipment_progress_images?select=*,equipment:equipment_id(id,tag_number,type,name,project_id,projects:project_id(id,name))&order=created_at.desc`;
+      if (startDate) {
+        url += `&created_at=gte.${startDate}`;
+      }
+      if (endDate) {
+        url += `&created_at=lte.${endDate}`;
+      }
+      const response = await api.get(url);
+      const images = Array.isArray(response.data) ? response.data : [];
+      
+      // Filter by project IDs if provided (client-side since PostgREST doesn't support nested filtering)
+      let filteredImages = images;
+      if (projectIds && projectIds.length > 0) {
+        filteredImages = images.filter((img: any) => 
+          img.equipment?.project_id && projectIds.includes(img.equipment.project_id)
+        );
+      }
+      
+      // Transform to match the expected format
+      return filteredImages.map((img: any) => ({
+        id: img.id,
+        image_url: img.image_url,
+        image: img.image_url, // Alias for compatibility
+        image_description: img.description,
+        imageDescription: img.description, // Alias for compatibility
+        description: img.description,
+        audio_data: img.audio_data,
+        audio: img.audio_data, // Alias for compatibility
+        audio_duration: img.audio_duration,
+        uploaded_by: img.uploaded_by,
+        upload_date: img.upload_date,
+        uploadDate: img.upload_date, // Alias for compatibility
+        created_at: img.created_at,
+        equipment: img.equipment || {
+          id: img.equipment_id,
+          tag_number: 'N/A',
+          type: 'Equipment',
+          project_id: null
+        },
+        entry_text: img.description || 'Progress image uploaded',
+        entry_type: 'progress_image'
+      }));
+    } catch (error: any) {
+      console.error('❌ Error fetching all progress images:', error);
+      return [];
+    }
+  },
+
   // Get all VDCR documents with approval status (for company highlights)
   async getAllVDCRDocuments(startDate?: string, endDate?: string, projectIds?: string[]) {
     try {
@@ -1370,7 +1422,7 @@ export const fastAPI = {
     try {
       // Fetch all equipment with po_cdd dates (including nulls, we'll filter in component)
       // Note: equipment table doesn't have next_milestone_date column, it's in custom_fields
-      let url = `/equipment?select=id,tag_number,type,name,progress,po_cdd,next_milestone,custom_fields,project_id,projects(id,name)&order=po_cdd.asc.nullsfirst`;
+      let url = `/equipment?select=id,tag_number,type,name,progress,po_cdd,next_milestone,custom_fields,project_id,projects(id,name,status)&order=po_cdd.asc.nullsfirst`;
       // Only apply date filters if both are provided (for other use cases)
       // For timeline view, we don't pass dates, so it fetches all equipment
       if (startDate && endDate) {

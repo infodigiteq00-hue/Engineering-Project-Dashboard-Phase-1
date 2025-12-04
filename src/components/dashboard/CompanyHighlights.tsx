@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { fastAPI } from '@/lib/api';
 import { activityApi } from '@/lib/activityApi';
 import axios from 'axios';
-import { Clock, User, FileText, CheckCircle, Send, Play, Pause, X, Eye } from 'lucide-react';
+import { Clock, User, FileText, CheckCircle, Send, Play, Pause, X, Eye, Search } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 
 interface CompanyHighlightsProps {
   onSelectProject?: (projectId: string, initialTab?: string) => void;
@@ -11,17 +12,26 @@ interface CompanyHighlightsProps {
 type TimePeriod = '1 Day' | '1 Week' | '1 Month' | 'Custom';
 type ActiveTab = 'production' | 'documentation' | 'timeline' | 'milestone';
 type ProductionSubTab = 'key-progress' | 'all-updates';
+type TimelineSubTab = 'with-dates' | 'without-dates';
 
 const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('1 Week');
   const [activeTab, setActiveTab] = useState<ActiveTab>('production');
   const [productionSubTab, setProductionSubTab] = useState<ProductionSubTab>('key-progress');
+  const [timelineSubTab, setTimelineSubTab] = useState<TimelineSubTab>('with-dates');
   const [productionUpdates, setProductionUpdates] = useState<any[]>([]);
   const [equipmentCardUpdates, setEquipmentCardUpdates] = useState<any[]>([]);
   const [documentationUpdates, setDocumentationUpdates] = useState<any[]>([]);
   const [timelineUpdates, setTimelineUpdates] = useState<any[]>([]);
+  const [timelineUpdatesWithoutDates, setTimelineUpdatesWithoutDates] = useState<any[]>([]);
   const [milestoneUpdates, setMilestoneUpdates] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  
+  // Search states for each section
+  const [productionSearchQuery, setProductionSearchQuery] = useState('');
+  const [documentationSearchQuery, setDocumentationSearchQuery] = useState('');
+  const [timelineSearchQuery, setTimelineSearchQuery] = useState('');
+  const [milestoneSearchQuery, setMilestoneSearchQuery] = useState('');
   const [isExpanded, setIsExpanded] = useState(true);
   const [customDateRange, setCustomDateRange] = useState({ from: '', to: '' });
   const [showCustomPicker, setShowCustomPicker] = useState(false);
@@ -174,18 +184,33 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
     };
   }, [timePeriod, customDateRange]);
 
-  // Fetch production updates (equipment progress entries)
+  // Fetch production updates (progress images for Key Progress, progress entries for All Updates)
   useEffect(() => {
+    // Clear production updates immediately when switching subtabs to prevent showing wrong data
+    setProductionUpdates([]);
+    
     const fetchProductionUpdates = async () => {
       setLoading(true);
       try {
-        const entries = await fastAPI.getAllProgressEntries(
-          getDateRange.start, 
-          getDateRange.end,
-          userRole === 'firm_admin' ? undefined : assignedProjectIds
-        );
-        const filteredEntries = filterByAssignedProjects(entries, 'equipment.project_id');
-        setProductionUpdates(Array.isArray(filteredEntries) ? filteredEntries : []);
+        if (productionSubTab === 'key-progress') {
+          // Fetch progress images for Key Progress tab
+          const images = await fastAPI.getAllProgressImages(
+            getDateRange.start, 
+            getDateRange.end,
+            userRole === 'firm_admin' ? undefined : assignedProjectIds
+          );
+          const filteredImages = filterByAssignedProjects(images, 'equipment.project_id');
+          setProductionUpdates(Array.isArray(filteredImages) ? filteredImages : []);
+        } else {
+          // Fetch progress entries for All Updates tab
+          const entries = await fastAPI.getAllProgressEntries(
+            getDateRange.start, 
+            getDateRange.end,
+            userRole === 'firm_admin' ? undefined : assignedProjectIds
+          );
+          const filteredEntries = filterByAssignedProjects(entries, 'equipment.project_id');
+          setProductionUpdates(Array.isArray(filteredEntries) ? filteredEntries : []);
+        }
       } catch (error) {
         console.error('Error fetching production updates:', error);
         setProductionUpdates([]);
@@ -197,7 +222,7 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
     if (isExpanded && activeTab === 'production' && canSeeTab('production')) {
       fetchProductionUpdates();
     }
-  }, [getDateRange, isExpanded, activeTab, userRole, assignedProjectIds]);
+  }, [getDateRange, isExpanded, activeTab, productionSubTab, userRole, assignedProjectIds]);
 
   // Fetch equipment card updates (equipment_updated activity logs)
   useEffect(() => {
@@ -337,24 +362,130 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Filter production updates by subtab
+  // Filter production updates by subtab and search query
   const filteredProductionUpdates = useMemo(() => {
+    let filtered = productionUpdates;
+    
+    // Safety check: Ensure data type matches the current subtab
+    // Key Progress should only show progress images (entry_type === 'progress_image')
+    // All Updates should only show progress entries (entry_type !== 'progress_image')
     if (productionSubTab === 'key-progress') {
-      // Show ONLY equipment progress entries (from equipment_progress_entries table)
-      // These are progress-related entries like welding, material, inspection, assembly, testing, etc.
-      // Exclude 'update' type which is for equipment card updates
-      return productionUpdates.filter((entry: any) => {
-        const entryType = entry.entry_type?.toLowerCase() || entry.type?.toLowerCase() || '';
-        // Exclude 'update' type as that's for equipment card updates, not progress
-        return entryType !== 'update' && entryType !== 'general' && entryType !== 'comment';
+      // Filter to only show progress images
+      // Progress images have entry_type === 'progress_image' (from getAllProgressImages)
+      filtered = filtered.filter((entry: any) => {
+        return entry.entry_type === 'progress_image';
       });
     } else {
-      // Show ALL equipment progress entries (from equipment_progress_entries table)
-      // This includes all entry types: welding, testing, general, comment, update, etc.
-      // Same as what shows in equipment card's "Updates" tab
-      return productionUpdates;
+      // Filter to only show progress entries (not progress images)
+      // Progress entries have entry_type !== 'progress_image' (from getAllProgressEntries)
+      filtered = filtered.filter((entry: any) => {
+        return entry.entry_type !== 'progress_image';
+      });
     }
-  }, [productionUpdates, productionSubTab]);
+    
+    // Apply search filter
+    if (productionSearchQuery.trim()) {
+      const query = productionSearchQuery.toLowerCase().trim();
+      filtered = filtered.filter((entry: any) => {
+        const tagNumber = (entry.equipment?.tag_number || '').toLowerCase();
+        const equipmentType = (entry.equipment?.type || entry.equipment?.name || '').toLowerCase();
+        const projectName = (entry.equipment?.projects?.name || '').toLowerCase();
+        const entryText = (entry.entry_text || entry.comment || entry.entry_type || '').toLowerCase();
+        const entryType = (entry.entry_type || entry.type || '').toLowerCase();
+        
+        return tagNumber.includes(query) || 
+               equipmentType.includes(query) || 
+               projectName.includes(query) || 
+               entryText.includes(query) ||
+               entryType.includes(query);
+      });
+    }
+    
+    return filtered;
+  }, [productionUpdates, productionSubTab, productionSearchQuery]);
+  
+  // Filter documentation updates by search query
+  const filteredDocumentationUpdates = useMemo(() => {
+    let filtered = documentationUpdates;
+    
+    if (documentationSearchQuery.trim()) {
+      const query = documentationSearchQuery.toLowerCase().trim();
+      filtered = filtered.filter((doc: any) => {
+        const docName = (doc.document_name || doc.vdcr_records?.document_name || '').toLowerCase();
+        const projectName = (doc.vdcr_records?.projects?.name || '').toLowerCase();
+        const status = (doc.vdcr_records?.status || doc.status || '').toLowerCase();
+        const equipmentTags = (doc.equipment_ids || doc.vdcr_records?.equipment_tag_numbers?.join(' ') || '').toLowerCase();
+        
+        return docName.includes(query) || 
+               projectName.includes(query) || 
+               status.includes(query) ||
+               equipmentTags.includes(query);
+      });
+    }
+    
+    return filtered;
+  }, [documentationUpdates, documentationSearchQuery]);
+  
+  // Filter timeline updates by search query
+  const filteredTimelineUpdates = useMemo(() => {
+    let filtered = timelineUpdates;
+    
+    if (timelineSearchQuery.trim()) {
+      const query = timelineSearchQuery.toLowerCase().trim();
+      filtered = filtered.filter((eq: any) => {
+        const tagNumber = (eq.tag_number || '').toLowerCase();
+        const equipmentType = (eq.type || eq.name || '').toLowerCase();
+        const projectName = (eq.projects?.name || '').toLowerCase();
+        
+        return tagNumber.includes(query) || 
+               equipmentType.includes(query) || 
+               projectName.includes(query);
+      });
+    }
+    
+    return filtered;
+  }, [timelineUpdates, timelineSearchQuery]);
+  
+  const filteredTimelineUpdatesWithoutDates = useMemo(() => {
+    let filtered = timelineUpdatesWithoutDates;
+    
+    if (timelineSearchQuery.trim()) {
+      const query = timelineSearchQuery.toLowerCase().trim();
+      filtered = filtered.filter((eq: any) => {
+        const tagNumber = (eq.tag_number || '').toLowerCase();
+        const equipmentType = (eq.type || eq.name || '').toLowerCase();
+        const projectName = (eq.projects?.name || '').toLowerCase();
+        
+        return tagNumber.includes(query) || 
+               equipmentType.includes(query) || 
+               projectName.includes(query);
+      });
+    }
+    
+    return filtered;
+  }, [timelineUpdatesWithoutDates, timelineSearchQuery]);
+  
+  // Filter milestone updates by search query
+  const filteredMilestoneUpdates = useMemo(() => {
+    let filtered = milestoneUpdates;
+    
+    if (milestoneSearchQuery.trim()) {
+      const query = milestoneSearchQuery.toLowerCase().trim();
+      filtered = filtered.filter((eq: any) => {
+        const tagNumber = (eq.tag_number || '').toLowerCase();
+        const equipmentType = (eq.type || eq.name || '').toLowerCase();
+        const projectName = (eq.projects?.name || '').toLowerCase();
+        const nextMilestone = (eq.next_milestone || '').toLowerCase();
+        
+        return tagNumber.includes(query) || 
+               equipmentType.includes(query) || 
+               projectName.includes(query) ||
+               nextMilestone.includes(query);
+      });
+    }
+    
+    return filtered;
+  }, [milestoneUpdates, milestoneSearchQuery]);
 
   // Fetch documentation updates - only those with status changes
   useEffect(() => {
@@ -402,9 +533,24 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
           userRole === 'firm_admin' ? undefined : assignedProjectIds
         );
         
-        // Filter equipment that has po_cdd dates and calculate days to go
+        // Separate equipment into two groups: with PO-CDD dates and without
         const eqArray = Array.isArray(equipment) ? equipment : [];
-        const withPOCddDates = eqArray.filter((eq: any) => {
+        
+        // Filter out equipment from completed projects first - more robust check
+        const activeProjectEquipment = eqArray.filter((eq: any) => {
+          // Check if project exists and is not completed
+          if (!eq.projects) return false;
+          const projectStatus = eq.projects.status;
+          // Only include if status exists and is NOT 'completed'
+          return projectStatus && projectStatus !== 'completed' && projectStatus.toLowerCase() !== 'completed';
+        });
+        
+        // Equipment WITH PO-CDD dates
+        const withPOCddDates = activeProjectEquipment.filter((eq: any) => {
+          // Double-check project status is not completed
+          if (eq.projects && (eq.projects.status === 'completed' || eq.projects.status?.toLowerCase() === 'completed')) {
+            return false;
+          }
           // Filter out null, empty, or "To be scheduled" values
           return eq.po_cdd && eq.po_cdd !== 'To be scheduled' && eq.po_cdd.trim() !== '';
         });
@@ -423,8 +569,31 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
             return a.daysToGo - b.daysToGo;
           });
         
-        const filteredEquipment = filterByAssignedProjects(withDaysToGo, 'project_id');
-        setTimelineUpdates(filteredEquipment);
+        // Equipment WITHOUT PO-CDD dates
+        const withoutPOCddDates = activeProjectEquipment.filter((eq: any) => {
+          // Double-check project status is not completed
+          if (eq.projects && (eq.projects.status === 'completed' || eq.projects.status?.toLowerCase() === 'completed')) {
+            return false;
+          }
+          // Equipment that doesn't have a valid PO-CDD date
+          return !eq.po_cdd || eq.po_cdd === 'To be scheduled' || eq.po_cdd.trim() === '';
+        }).sort((a: any, b: any) => {
+          // Sort by equipment type or tag number
+          const aName = (a.type || a.name || '').toLowerCase();
+          const bName = (b.type || b.name || '').toLowerCase();
+          return aName.localeCompare(bName);
+        });
+        
+        // Apply project assignment filtering, but ensure completed projects are still excluded
+        const filteredWithDates = filterByAssignedProjects(withDaysToGo, 'project_id').filter((eq: any) => {
+          return eq.projects && eq.projects.status !== 'completed' && eq.projects.status?.toLowerCase() !== 'completed';
+        });
+        const filteredWithoutDates = filterByAssignedProjects(withoutPOCddDates, 'project_id').filter((eq: any) => {
+          return eq.projects && eq.projects.status !== 'completed' && eq.projects.status?.toLowerCase() !== 'completed';
+        });
+        
+        setTimelineUpdates(filteredWithDates);
+        setTimelineUpdatesWithoutDates(filteredWithoutDates);
       } catch (error) {
         console.error('❌ Error fetching timeline updates:', error);
         setTimelineUpdates([]);
@@ -437,6 +606,14 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
       fetchTimelineUpdates();
     }
   }, [activeTab, isExpanded, userRole, assignedProjectIds]);
+
+  // Clear search queries when switching tabs
+  useEffect(() => {
+    setProductionSearchQuery('');
+    setDocumentationSearchQuery('');
+    setTimelineSearchQuery('');
+    setMilestoneSearchQuery('');
+  }, [activeTab]);
 
   // Auto-refresh data every 30 seconds
   useEffect(() => {
@@ -832,9 +1009,29 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
                       </button>
                     </div>
 
+                    {/* Search Input for Production Updates */}
+                    <div className="mb-3 sm:mb-4">
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                        <Input
+                          type="text"
+                          placeholder={productionSubTab === 'key-progress' 
+                            ? "Search by equipment number, type, project name, or description..." 
+                            : "Search by equipment number, type, project name, update type, or entry text..."}
+                          value={productionSearchQuery}
+                          onChange={(e) => setProductionSearchQuery(e.target.value)}
+                          className="pl-8 pr-3 py-2 text-xs sm:text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
                     {filteredProductionUpdates.length === 0 ? (
                       <div className="text-center py-6 sm:py-8 md:py-10 text-gray-500">
-                        <p className="text-xs sm:text-sm md:text-base">No {productionSubTab === 'key-progress' ? 'equipment progress entries' : 'equipment card updates'} found for the selected time period.</p>
+                        <p className="text-xs sm:text-sm md:text-base">
+                          {productionSearchQuery.trim() 
+                            ? `No results found for "${productionSearchQuery}". Try a different search term.`
+                            : `No ${productionSubTab === 'key-progress' ? 'equipment progress entries' : 'equipment card updates'} found for the selected time period.`}
+                        </p>
                       </div>
                     ) : (
                       <div className="h-[280px] xs:h-[320px] sm:h-[360px] md:h-[400px] overflow-y-auto space-y-2 sm:space-y-3 md:space-y-4 pr-1 sm:pr-2 company-highlights-scrollbar">
@@ -859,8 +1056,8 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
                                 setShowProgressImageModal({
                                   url: entry.image_url || entry.image,
                                   description: entry.image_description || entry.imageDescription,
-                                  uploadedBy: entry.created_by_user?.full_name || entry.created_by || 'Unknown User',
-                                  uploadDate: entry.created_at || entry.uploadDate
+                                  uploadedBy: entry.created_by_user?.full_name || entry.uploaded_by || entry.created_by || 'Unknown User',
+                                  uploadDate: entry.created_at || entry.uploadDate || entry.upload_date
                                 });
                               }}
                             >
@@ -899,12 +1096,12 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
                               <span className="truncate">{entry.equipment?.projects?.name || 'Unknown Project'}</span>
                               <span>•</span>
                               <span className="whitespace-nowrap">{formatTimeAgo(entry.created_at || entry.uploadDate || new Date().toISOString())}</span>
-                              {entry.created_by_user?.full_name && (
+                              {(entry.created_by_user?.full_name || entry.uploaded_by) && (
                                 <>
                                   <span>•</span>
                                   <span className="flex items-center gap-0.5 sm:gap-1">
                                     <User className="w-2.5 h-2.5 xs:w-3 xs:h-3 sm:w-3.5 sm:h-3.5" />
-                                    <span className="truncate">{entry.created_by_user.full_name}</span>
+                                    <span className="truncate">{entry.created_by_user?.full_name || entry.uploaded_by}</span>
                                   </span>
                                 </>
                               )}
@@ -948,13 +1145,31 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
                 {/* Documentation Updates */}
                 {activeTab === 'documentation' && (
                   <div>
-                    {documentationUpdates.length === 0 ? (
+                    {/* Search Input for Documentation Updates */}
+                    <div className="mb-3 sm:mb-4">
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                        <Input
+                          type="text"
+                          placeholder="Search by document name, project name, status, or equipment tags..."
+                          value={documentationSearchQuery}
+                          onChange={(e) => setDocumentationSearchQuery(e.target.value)}
+                          className="pl-8 pr-3 py-2 text-xs sm:text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    {filteredDocumentationUpdates.length === 0 ? (
                       <div className="text-center py-6 sm:py-8 md:py-10 text-gray-500">
-                        <p className="text-xs sm:text-sm md:text-base">No documentation updates found for the selected time period.</p>
+                        <p className="text-xs sm:text-sm md:text-base">
+                          {documentationSearchQuery.trim() 
+                            ? `No results found for "${documentationSearchQuery}". Try a different search term.`
+                            : 'No documentation updates found for the selected time period.'}
+                        </p>
                       </div>
                     ) : (
                       <div className="h-[280px] xs:h-[320px] sm:h-[360px] md:h-[400px] overflow-y-auto space-y-2 sm:space-y-3 md:space-y-4 pr-1 sm:pr-2 company-highlights-scrollbar">
-                        {documentationUpdates.map((doc: any) => (
+                        {filteredDocumentationUpdates.map((doc: any) => (
                         <div
                           key={doc.id}
                           onClick={() => {
@@ -1006,13 +1221,62 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
                 {/* Manufacturing Timeline */}
                 {activeTab === 'timeline' && (
                   <div>
-                    {timelineUpdates.length === 0 ? (
-                      <div className="text-center py-6 sm:py-8 md:py-10 text-gray-500">
-                        <p className="text-xs sm:text-sm md:text-base">No equipment with completion dates found.</p>
+                    {/* Timeline Subtabs - Underlined Style */}
+                    <div className="flex gap-2 sm:gap-3 md:gap-4 mb-3 sm:mb-4 border-b border-gray-200">
+                      <button
+                        onClick={() => setTimelineSubTab('with-dates')}
+                        className={`px-2 py-1 xs:px-2.5 xs:py-1.5 sm:px-3 sm:py-1.5 md:px-4 md:py-2 text-[10px] xs:text-xs sm:text-sm md:text-base font-medium transition-colors relative pb-2.5 sm:pb-3 ${
+                          timelineSubTab === 'with-dates'
+                            ? 'text-blue-600'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        With PO-CDD Dates
+                        {timelineSubTab === 'with-dates' && (
+                          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600"></span>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setTimelineSubTab('without-dates')}
+                        className={`px-2 py-1 xs:px-2.5 xs:py-1.5 sm:px-3 sm:py-1.5 md:px-4 md:py-2 text-[10px] xs:text-xs sm:text-sm md:text-base font-medium transition-colors relative pb-2.5 sm:pb-3 ${
+                          timelineSubTab === 'without-dates'
+                            ? 'text-blue-600'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Without PO-CDD Dates
+                        {timelineSubTab === 'without-dates' && (
+                          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600"></span>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Search Input for Manufacturing Timeline */}
+                    <div className="mb-3 sm:mb-4">
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                        <Input
+                          type="text"
+                          placeholder="Search by equipment number, type, or project name..."
+                          value={timelineSearchQuery}
+                          onChange={(e) => setTimelineSearchQuery(e.target.value)}
+                          className="pl-8 pr-3 py-2 text-xs sm:text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                        />
                       </div>
-                    ) : (
-                      <div className="h-[280px] xs:h-[320px] sm:h-[360px] md:h-[400px] overflow-y-auto space-y-2 sm:space-y-3 md:space-y-4 pr-1 sm:pr-2 company-highlights-scrollbar">
-                        {timelineUpdates.map((eq: any) => {
+                    </div>
+
+                    {timelineSubTab === 'with-dates' ? (
+                      filteredTimelineUpdates.length === 0 ? (
+                        <div className="text-center py-6 sm:py-8 md:py-10 text-gray-500">
+                          <p className="text-xs sm:text-sm md:text-base">
+                            {timelineSearchQuery.trim() 
+                              ? `No results found for "${timelineSearchQuery}". Try a different search term.`
+                              : 'No equipment with PO-CDD dates found for active projects.'}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="h-[280px] xs:h-[320px] sm:h-[360px] md:h-[400px] overflow-y-auto space-y-2 sm:space-y-3 md:space-y-4 pr-1 sm:pr-2 company-highlights-scrollbar">
+                          {filteredTimelineUpdates.map((eq: any) => {
                         const daysToGo = eq.daysToGo;
                         const progress = eq.progress || 0;
                         const isOverdue = daysToGo < 0;
@@ -1089,7 +1353,75 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
                           </div>
                         );
                       })}
-                      </div>
+                        </div>
+                      )
+                    ) : (
+                      filteredTimelineUpdatesWithoutDates.length === 0 ? (
+                        <div className="text-center py-6 sm:py-8 md:py-10 text-gray-500">
+                          <p className="text-xs sm:text-sm md:text-base">
+                            {timelineSearchQuery.trim() 
+                              ? `No results found for "${timelineSearchQuery}". Try a different search term.`
+                              : 'No equipment without PO-CDD dates found for active projects.'}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="h-[280px] xs:h-[320px] sm:h-[360px] md:h-[400px] overflow-y-auto space-y-2 sm:space-y-3 md:space-y-4 pr-1 sm:pr-2 company-highlights-scrollbar">
+                          {filteredTimelineUpdatesWithoutDates.map((eq: any) => {
+                            const progress = eq.progress || 0;
+                            
+                            return (
+                              <div
+                                key={eq.id}
+                                onClick={() => {
+                                  if (eq.project_id && onSelectProject) {
+                                    onSelectProject(eq.project_id, 'equipment');
+                                  }
+                                }}
+                                className={`p-2.5 sm:p-3 md:p-4 bg-gray-50 rounded-md sm:rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all ${
+                                  eq.project_id ? 'cursor-pointer' : ''
+                                }`}
+                              >
+                                <div className="flex items-start justify-between mb-2 sm:mb-3">
+                                  <div className="flex-1 min-w-0 pr-2">
+                                    <h3 className="text-xs xs:text-sm sm:text-base md:text-lg font-semibold text-gray-900 mb-0.5 sm:mb-1 truncate">
+                                      {eq.type || eq.name} {eq.tag_number || ''}
+                                    </h3>
+                                    <p className="text-[10px] xs:text-xs sm:text-sm md:text-base text-gray-600 truncate">
+                                      {eq.projects?.name || 'Unknown Project'}
+                                    </p>
+                                  </div>
+                                  <div className="text-right flex-shrink-0">
+                                    <div className="text-[9px] xs:text-[10px] sm:text-xs md:text-sm text-gray-500 whitespace-nowrap bg-yellow-50 text-yellow-700 px-2 py-1 rounded border border-yellow-200">
+                                      No date set
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                {/* Progress Bar */}
+                                <div className="mb-1.5 sm:mb-2">
+                                  <div className="flex items-center justify-between mb-0.5 sm:mb-1">
+                                    <span className="text-[10px] xs:text-xs sm:text-sm text-gray-600">Progress</span>
+                                    <span className="text-[10px] xs:text-xs sm:text-sm md:text-base font-medium text-gray-700">{progress}%</span>
+                                  </div>
+                                  <div className="w-full bg-gray-200 rounded-full h-1.5 sm:h-2">
+                                    <div
+                                      className="bg-blue-600 h-1.5 sm:h-2 rounded-full transition-all"
+                                      style={{ width: `${progress}%` }}
+                                    />
+                                  </div>
+                                </div>
+                                
+                                {/* Status */}
+                                <div className="mt-1.5 sm:mt-2">
+                                  <span className="inline-flex items-center px-1.5 xs:px-2 sm:px-2.5 md:px-3 py-0.5 rounded-full text-[9px] xs:text-[10px] sm:text-xs md:text-sm font-medium bg-gray-100 text-gray-800 border border-gray-200">
+                                    Pending Schedule
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )
                     )}
                   </div>
                 )}
@@ -1097,13 +1429,31 @@ const CompanyHighlights = ({ onSelectProject }: CompanyHighlightsProps) => {
                 {/* Next Milestone & Date */}
                 {activeTab === 'milestone' && (
                   <div>
-                    {milestoneUpdates.length === 0 ? (
+                    {/* Search Input for Next Milestone */}
+                    <div className="mb-3 sm:mb-4">
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                        <Input
+                          type="text"
+                          placeholder="Search by equipment number, type, project name, or next milestone..."
+                          value={milestoneSearchQuery}
+                          onChange={(e) => setMilestoneSearchQuery(e.target.value)}
+                          className="pl-8 pr-3 py-2 text-xs sm:text-sm border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    {filteredMilestoneUpdates.length === 0 ? (
                       <div className="text-center py-6 sm:py-8 md:py-10 text-gray-500">
-                        <p className="text-xs sm:text-sm md:text-base">No equipment with next milestones found.</p>
+                        <p className="text-xs sm:text-sm md:text-base">
+                          {milestoneSearchQuery.trim() 
+                            ? `No results found for "${milestoneSearchQuery}". Try a different search term.`
+                            : 'No equipment with next milestones found.'}
+                        </p>
                       </div>
                     ) : (
                       <div className="h-[280px] xs:h-[320px] sm:h-[360px] md:h-[400px] overflow-y-auto space-y-2 sm:space-y-3 md:space-y-4 pr-1 sm:pr-2 company-highlights-scrollbar">
-                        {milestoneUpdates.map((eq: any) => {
+                        {filteredMilestoneUpdates.map((eq: any) => {
                         return (
                           <div
                             key={eq.id}

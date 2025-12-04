@@ -289,7 +289,46 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         completionDate: eq.completion_date || 'No deadline set',
         location: eq.location || 'Not Assigned',
         supervisor: eq.supervisor || '',
-        lastUpdate: eq.updated_at ? new Date(eq.updated_at).toLocaleDateString() : new Date().toLocaleDateString(),
+        lastUpdate: (() => {
+          try {
+            // First check custom_fields for "Last Updated On" (user-selected date)
+            if (eq.custom_fields && Array.isArray(eq.custom_fields)) {
+              const lastUpdatedField = eq.custom_fields.find((f: any) => f.name === 'Last Updated On');
+              if (lastUpdatedField && lastUpdatedField.value) {
+                const date = new Date(lastUpdatedField.value);
+                if (!isNaN(date.getTime())) {
+                  return date.toLocaleDateString('en-US', {
+                    month: 'numeric',
+                    day: 'numeric',
+                    year: 'numeric'
+                  });
+                }
+              }
+            }
+            // Fall back to updated_at if no custom field
+            if (eq.updated_at) {
+              const date = new Date(eq.updated_at);
+              if (!isNaN(date.getTime())) {
+                return date.toLocaleDateString('en-US', {
+                  month: 'numeric',
+                  day: 'numeric',
+                  year: 'numeric'
+                });
+              }
+            }
+            return new Date().toLocaleDateString('en-US', {
+              month: 'numeric',
+              day: 'numeric',
+              year: 'numeric'
+            });
+          } catch {
+            return new Date().toLocaleDateString('en-US', {
+              month: 'numeric',
+              day: 'numeric',
+              year: 'numeric'
+            });
+          }
+        })(),
         images: eq.images || [],
         progressImages: eq.progress_images || [], // Main progress images (top section)
         progressImagesMetadata: eq.progress_images_metadata || [], // Main progress images metadata
@@ -778,36 +817,59 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
     if (editingEquipmentId) {
       const equipment = localEquipment.find(eq => eq.id === editingEquipmentId);
       if (equipment) {
-        // Initialize lastUpdate date if not already set
-        if (!overviewLastUpdateRaw[editingEquipmentId] && equipment.lastUpdate) {
-          try {
-            let date: Date;
-            if (typeof equipment.lastUpdate === 'string') {
-              date = new Date(equipment.lastUpdate);
-              if (isNaN(date.getTime()) && equipment.lastUpdate.includes('/')) {
-                const parts = equipment.lastUpdate.split('/');
-                if (parts.length === 3) {
-                  date = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]));
-                }
-              }
-            } else {
-              date = new Date(equipment.lastUpdate);
+        // Initialize lastUpdate date - always check and update to ensure correct format
+        try {
+          // Check custom_fields for "Last Updated On" - check both equipment.customFields and customFields state
+          let dateToUse: Date | null = null;
+          
+          // First check customFields state (might be more up-to-date)
+          const stateCustomFields = customFields[editingEquipmentId];
+          if (stateCustomFields && Array.isArray(stateCustomFields)) {
+            const lastUpdatedField = stateCustomFields.find((f: any) => f.name === 'Last Updated On');
+            if (lastUpdatedField && lastUpdatedField.value) {
+              dateToUse = new Date(lastUpdatedField.value);
             }
-            
-            if (!isNaN(date.getTime())) {
-              const year = date.getFullYear();
-              const month = String(date.getMonth() + 1).padStart(2, '0');
-              const day = String(date.getDate()).padStart(2, '0');
-              const hours = String(date.getHours()).padStart(2, '0');
-              const minutes = String(date.getMinutes()).padStart(2, '0');
-              setOverviewLastUpdateRaw(prev => ({
-                ...prev,
-                [editingEquipmentId]: `${year}-${month}-${day}T${hours}:${minutes}`
-              }));
-            }
-          } catch (e) {
-            console.error('Error initializing lastUpdate date:', e);
           }
+          
+          // If not found in state, check equipment.customFields
+          if ((!dateToUse || isNaN(dateToUse.getTime())) && equipment.customFields && Array.isArray(equipment.customFields)) {
+            const lastUpdatedField = equipment.customFields.find((f: any) => f.name === 'Last Updated On');
+            if (lastUpdatedField && lastUpdatedField.value) {
+              dateToUse = new Date(lastUpdatedField.value);
+            }
+          }
+          
+          // If not found in custom_fields, try parsing equipment.lastUpdate
+          if (!dateToUse || isNaN(dateToUse.getTime())) {
+            if (equipment.lastUpdate) {
+              if (typeof equipment.lastUpdate === 'string') {
+                dateToUse = new Date(equipment.lastUpdate);
+                if (isNaN(dateToUse.getTime()) && equipment.lastUpdate.includes('/')) {
+                  const parts = equipment.lastUpdate.split('/');
+                  if (parts.length === 3) {
+                    dateToUse = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]));
+                  }
+                }
+              } else {
+                dateToUse = new Date(equipment.lastUpdate);
+              }
+            }
+          }
+          
+          if (dateToUse && !isNaN(dateToUse.getTime())) {
+            const year = dateToUse.getFullYear();
+            const month = String(dateToUse.getMonth() + 1).padStart(2, '0');
+            const day = String(dateToUse.getDate()).padStart(2, '0');
+            // Use date format only (YYYY-MM-DD) instead of datetime
+            const dateString = `${year}-${month}-${day}`;
+            // Always update, even if already set, to ensure correct format
+            setOverviewLastUpdateRaw(prev => ({
+              ...prev,
+              [editingEquipmentId]: dateString
+            }));
+          }
+        } catch (e) {
+          console.error('Error initializing lastUpdate date:', e);
         }
 
         // Initialize nextMilestoneDate if not already set - check both equipment and editFormData
@@ -830,7 +892,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         }
       }
     }
-  }, [editingEquipmentId, localEquipment, editFormData.nextMilestoneDate]);
+  }, [editingEquipmentId, localEquipment, customFields]);
 
   // Load team members when component mounts
   useEffect(() => {
@@ -1228,42 +1290,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
     // console.log('🔧 equipment.customFields:', equipment.customFields);
 
     // Pre-fill Overview tab fields
-    // Convert lastUpdate to datetime-local format
-    if (equipment.lastUpdate) {
-      try {
-        // Try to parse the date string and convert to datetime-local format
-        // Handle different date formats (MM/DD/YYYY, ISO string, etc.)
-        let date: Date;
-        if (typeof equipment.lastUpdate === 'string') {
-          // Try parsing as is first
-          date = new Date(equipment.lastUpdate);
-          // If that fails, try parsing as MM/DD/YYYY format
-          if (isNaN(date.getTime()) && equipment.lastUpdate.includes('/')) {
-            const parts = equipment.lastUpdate.split('/');
-            if (parts.length === 3) {
-              date = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]));
-            }
-          }
-        } else {
-          date = new Date(equipment.lastUpdate);
-        }
-        
-        if (!isNaN(date.getTime())) {
-          const year = date.getFullYear();
-          const month = String(date.getMonth() + 1).padStart(2, '0');
-          const day = String(date.getDate()).padStart(2, '0');
-          const hours = String(date.getHours()).padStart(2, '0');
-          const minutes = String(date.getMinutes()).padStart(2, '0');
-          setOverviewLastUpdateRaw(prev => ({
-            ...prev,
-            [equipment.id]: `${year}-${month}-${day}T${hours}:${minutes}`
-          }));
-        }
-      } catch (e) {
-        // If parsing fails, leave empty
-        console.error('Error parsing lastUpdate date:', e);
-      }
-    }
+    // Note: lastUpdate date initialization is handled in useEffect to check custom_fields first
 
     // Convert nextMilestoneDate to date format
     const nextMilestoneDateValue = equipment.nextMilestoneDate;
@@ -1617,6 +1644,42 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
       } else if (nextMilestoneDateIndex >= 0) {
         // Remove if value is null/undefined
         customFieldsToSave.splice(nextMilestoneDateIndex, 1);
+      }
+      
+      // Add/update last_updated_on in custom_fields (user-selected date for display)
+      const lastUpdatedOnValue = overviewLastUpdateRaw[editingEquipmentId] 
+        ? new Date(overviewLastUpdateRaw[editingEquipmentId]).toISOString() 
+        : (editFormData.lastUpdate ? (() => {
+            try {
+              // Try to parse the formatted date string
+              const date = new Date(editFormData.lastUpdate);
+              if (!isNaN(date.getTime())) {
+                return date.toISOString();
+              }
+              // If it's in M/D/YYYY format, parse it
+              const parts = editFormData.lastUpdate.split('/');
+              if (parts.length === 3) {
+                const parsedDate = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]));
+                if (!isNaN(parsedDate.getTime())) {
+                  return parsedDate.toISOString();
+                }
+              }
+              return null;
+            } catch {
+              return null;
+            }
+          })() : null);
+      
+      const lastUpdatedOnIndex = customFieldsToSave.findIndex((f: any) => f.name === 'Last Updated On');
+      if (lastUpdatedOnValue) {
+        if (lastUpdatedOnIndex >= 0) {
+          customFieldsToSave[lastUpdatedOnIndex].value = lastUpdatedOnValue;
+        } else {
+          customFieldsToSave.push({ name: 'Last Updated On', value: lastUpdatedOnValue });
+        }
+      } else if (lastUpdatedOnIndex >= 0) {
+        // Remove if value is null/undefined
+        customFieldsToSave.splice(lastUpdatedOnIndex, 1);
       }
       
       // Remove notes from custom_fields since we're saving directly to notes column
@@ -3994,22 +4057,46 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                             <div>
                               <Label className="text-xs text-gray-600">Last Updated On</Label>
                               <Input
-                                type="datetime-local"
+                                type="date"
                                 value={overviewLastUpdateRaw[item.id] || ''}
                                 onChange={(e) => {
                                   const raw = e.target.value;
                                   setOverviewLastUpdateRaw(prev => ({ ...prev, [item.id]: raw }));
-                                  setEditFormData({
-                                    ...editFormData,
-                                    lastUpdate: raw ? formatDateTimeDisplay(raw) : ''
-                                  });
+                                  if (raw) {
+                                    const date = new Date(raw);
+                                    const formattedDate = date.toLocaleDateString('en-US', {
+                                      month: 'numeric',
+                                      day: 'numeric',
+                                      year: 'numeric'
+                                    });
+                                    setEditFormData({
+                                      ...editFormData,
+                                      lastUpdate: formattedDate
+                                    });
+                                  } else {
+                                    setEditFormData({
+                                      ...editFormData,
+                                      lastUpdate: ''
+                                    });
+                                  }
                                 }}
                                 className="text-xs h-8"
                               />
-                              <p className="text-[11px] text-gray-400 mt-1">Reference timestamp shown to the team</p>
+                              <p className="text-[11px] text-gray-400 mt-1">Reference date shown to the team</p>
                               {overviewLastUpdateRaw[item.id] && (
                                 <p className="text-[11px] text-blue-500 mt-1">
-                                  {formatDateTimeDisplay(overviewLastUpdateRaw[item.id])}
+                                  {(() => {
+                                    try {
+                                      const date = new Date(overviewLastUpdateRaw[item.id]);
+                                      return date.toLocaleDateString('en-US', {
+                                        month: 'numeric',
+                                        day: 'numeric',
+                                        year: 'numeric'
+                                      });
+                                    } catch {
+                                      return overviewLastUpdateRaw[item.id];
+                                    }
+                                  })()}
                                 </p>
                               )}
                             </div>
@@ -4073,7 +4160,39 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                           const equipmentEntries = progressEntries[item.id] || item.progressEntries || [];
                           const latestEntry = equipmentEntries.length > 0 ? equipmentEntries[equipmentEntries.length - 1] : null;
                           const latestEntryAny = latestEntry as any;
-                          const lastUpdatedValue = latestEntryAny?.date || (latestEntry as ProgressEntry)?.created_at || latestEntryAny?.uploadDate || (latestEntry as ProgressEntry)?.uploadDate || item.lastUpdate || '—';
+                          
+                          // Get raw date value from various sources
+                          const rawDateValue = latestEntryAny?.date || (latestEntry as ProgressEntry)?.created_at || latestEntryAny?.uploadDate || (latestEntry as ProgressEntry)?.uploadDate || item.lastUpdate || null;
+                          
+                          // Format the date properly
+                          let lastUpdatedValue = '—';
+                          if (rawDateValue) {
+                            try {
+                              // Check if it's already a formatted date (contains '/' or is a short format)
+                              if (typeof rawDateValue === 'string' && (rawDateValue.includes('/') || rawDateValue.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/))) {
+                                // Already formatted, use as is
+                                lastUpdatedValue = rawDateValue;
+                              } else {
+                                // Format the date
+                                const date = new Date(rawDateValue);
+                                if (!isNaN(date.getTime())) {
+                                  lastUpdatedValue = date.toLocaleDateString('en-US', {
+                                    month: 'numeric',
+                                    day: 'numeric',
+                                    year: 'numeric'
+                                  });
+                                } else {
+                                  lastUpdatedValue = rawDateValue;
+                                }
+                              }
+                            } catch (e) {
+                              // If formatting fails, try to use the value as is, or fallback
+                              lastUpdatedValue = item.lastUpdate || '—';
+                            }
+                          } else {
+                            // No date found, use item.lastUpdate as fallback
+                            lastUpdatedValue = item.lastUpdate || '—';
+                          }
                           const updateDescription =
                             latestEntryAny?.text || (latestEntry as ProgressEntry)?.comment || (latestEntry as ProgressEntry)?.entry_text ||
                             (item.notes && item.notes.trim() !== '' ? item.notes : '') ||
