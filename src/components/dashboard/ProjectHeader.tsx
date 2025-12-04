@@ -84,7 +84,7 @@ const ProjectHeader: React.FC<ProjectHeaderProps> = ({ loading, userName, userRo
       <div className="flex-1 flex items-center gap-2 sm:gap-3">
         {/* Company Logo */}
         {firmLogo ? (
-          <div className="flex-shrink-0 bg-white rounded-lg border border-gray-200 p-1.5 sm:p-2 shadow-sm flex items-center justify-center w-[48px] h-[48px] sm:w-[56px] sm:h-[56px] lg:w-[64px] lg:h-[64px]">
+          <div className="flex-shrink-0 bg-white rounded-lg border border-gray-200 p-1.5 sm:p-2 shadow-sm flex items-center justify-center min-w-[48px] min-h-[48px] sm:min-w-[56px] sm:min-h-[56px] lg:min-w-[64px] lg:min-h-[64px] max-w-[200px] max-h-[64px] sm:max-h-[72px] lg:max-h-[80px]">
             {firmLogo.toLowerCase().endsWith('.pdf') ? (
               <div className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12">
                 <svg className="w-full h-full text-red-600" fill="currentColor" viewBox="0 0 20 20">
@@ -95,7 +95,7 @@ const ProjectHeader: React.FC<ProjectHeaderProps> = ({ loading, userName, userRo
               <img 
                 src={firmLogo} 
                 alt={firmName || 'Company Logo'} 
-                className="max-w-[44px] max-h-[44px] sm:max-w-[52px] sm:max-h-[52px] lg:max-w-[60px] lg:max-h-[60px] w-auto h-auto object-contain"
+                className="max-w-[180px] max-h-[44px] sm:max-w-[190px] sm:max-h-[52px] lg:max-w-[200px] lg:max-h-[60px] w-auto h-auto object-contain"
                 style={{ 
                   maxWidth: '100%', 
                   height: 'auto',
