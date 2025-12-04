@@ -8,10 +8,12 @@ interface ProjectHeaderProps {
   loading: boolean;
   userName: string;
   userRole: string;
+  firmName?: string;
+  firmLogo?: string | null;
 }
 
 // Header component with user profile and dashboard title
-const ProjectHeader: React.FC<ProjectHeaderProps> = ({ loading, userName, userRole }) => {
+const ProjectHeader: React.FC<ProjectHeaderProps> = ({ loading, userName, userRole, firmName, firmLogo }) => {
   const { signOut } = useAuth();
   const navigate = useNavigate();
   const [showDropdown, setShowDropdown] = useState(false);
@@ -79,11 +81,59 @@ const ProjectHeader: React.FC<ProjectHeaderProps> = ({ loading, userName, userRo
 
   return (
     <div className="flex items-center justify-between mb-6 sm:mb-8">
-      <div className="flex-1">
-        <h1 className="text-base sm:text-lg lg:text-xl font-bold font-display bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">
-          Project Management Dashboard
-        </h1>
-        <p className="text-xs sm:text-sm text-gray-600 mt-1 font-sans">Monitor project progress, equipment status, and key activities at a glance</p>
+      <div className="flex-1 flex items-center gap-2 sm:gap-3">
+        {/* Company Logo */}
+        {firmLogo ? (
+          <div className="flex-shrink-0 bg-white rounded-lg border border-gray-200 p-1.5 sm:p-2 shadow-sm flex items-center justify-center w-[48px] h-[48px] sm:w-[56px] sm:h-[56px] lg:w-[64px] lg:h-[64px]">
+            {firmLogo.toLowerCase().endsWith('.pdf') ? (
+              <div className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12">
+                <svg className="w-full h-full text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+                </svg>
+              </div>
+            ) : (
+              <img 
+                src={firmLogo} 
+                alt={firmName || 'Company Logo'} 
+                className="max-w-[44px] max-h-[44px] sm:max-w-[52px] sm:max-h-[52px] lg:max-w-[60px] lg:max-h-[60px] w-auto h-auto object-contain"
+                style={{ 
+                  maxWidth: '100%', 
+                  height: 'auto',
+                  width: 'auto',
+                  display: 'block'
+                }}
+                onError={(e) => {
+                  // Hide image if it fails to load
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            )}
+          </div>
+        ) : firmName ? (
+          <div className="flex-shrink-0 w-[48px] h-[48px] sm:w-[56px] sm:h-[56px] lg:w-[64px] lg:h-[64px] bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center shadow-sm">
+            <span className="text-white text-base sm:text-lg lg:text-xl font-bold">
+              {firmName.charAt(0).toUpperCase()}
+            </span>
+          </div>
+        ) : null}
+        
+        <div className="flex-1 min-w-0">
+          {firmName ? (
+            <>
+              <h1 className="text-base sm:text-lg lg:text-xl font-bold font-display bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">
+                {firmName}
+              </h1>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1 font-sans">Project Management Dashboard</p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-base sm:text-lg lg:text-xl font-bold font-display bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">
+                Project Management Dashboard
+              </h1>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1 font-sans">Monitor project progress, equipment status, and key activities at a glance</p>
+            </>
+          )}
+        </div>
       </div>
       
       {/* User Profile with Logout Dropdown */}

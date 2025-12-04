@@ -30,6 +30,17 @@ export const fastAPI = {
     }
   },
 
+  // Fetch firm by ID
+  async getFirmById(firmId: string) {
+    try {
+      const response = await api.get(`/firms?id=eq.${firmId}&select=*`);
+      return Array.isArray(response.data) && response.data.length > 0 ? response.data[0] : null;
+    } catch (error) {
+      console.error('❌ Error fetching firm:', error);
+      throw error;
+    }
+  },
+
   // Fetch all users
   async getUsers() {
     try {
@@ -130,6 +141,62 @@ export const fastAPI = {
       return response.data;
     } catch (error) {
       console.error('❌ Error updating company:', error);
+      throw error;
+    }
+  },
+
+  // Upload company logo to Supabase storage
+  async uploadCompanyLogo(file: File, firmId: string): Promise<string> {
+    try {
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFtbWFvc21rZ3drYW1mamhjeGlrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjYyNzU4NywiZXhwIjoyMDcyMjAzNTg3fQ.PVg3nnfYEBnqpceBXJjnZJIc9lwjmW1G7Lo2U7t0ehk';
+      
+      // Validate file type (images and PDF)
+      const validTypes = [
+        'image/jpeg', 
+        'image/jpg', 
+        'image/png', 
+        'image/gif', 
+        'image/webp', 
+        'image/svg+xml',
+        'application/pdf'
+      ];
+      if (!validTypes.includes(file.type)) {
+        throw new Error('Invalid file type. Please upload an image file (JPEG, PNG, GIF, WebP, SVG) or PDF.');
+      }
+      
+      // Validate file size (max 5MB)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (file.size > maxSize) {
+        throw new Error('File size too large. Please select a file smaller than 5MB.');
+      }
+      
+      const fileExt = file.name.split('.').pop();
+      const fileName = `company-logos/${firmId}/${Date.now()}-${Math.random().toString(36).substr(2, 5)}.${fileExt}`;
+      
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const uploadResponse = await fetch(`${SUPABASE_URL}/storage/v1/object/project-documents/${fileName}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${SERVICE_ROLE_KEY}`,
+          'apikey': SERVICE_ROLE_KEY
+        },
+        body: formData
+      });
+      
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        console.error('❌ Logo upload failed:', uploadResponse.status, errorText);
+        throw new Error(`Logo upload failed: ${uploadResponse.status}`);
+      }
+      
+      // Get public URL
+      const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/project-documents/${fileName}`;
+      return publicUrl;
+    } catch (error: any) {
+      console.error('❌ Error uploading company logo:', error);
       throw error;
     }
   },
