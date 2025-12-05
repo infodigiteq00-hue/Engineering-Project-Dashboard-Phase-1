@@ -565,26 +565,51 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
       const equipment = localEquipment.find(eq => eq.id === editingEquipmentId);
       if (equipment) {
         // Initialize Last Updated On (date only)
-        const updatedAtValue = equipment.updated_at || (equipment as any).updatedAt || equipment.lastUpdate;
-        if (updatedAtValue) {
+        // For standalone equipment, prioritize last_update (DATE column) over updated_at (timestamp)
+        // last_update is already in YYYY-MM-DD format from the database
+        let dateOnly = '';
+        if ((equipment as any).last_update) {
+          // Use last_update directly if available (already in YYYY-MM-DD format)
+          dateOnly = String((equipment as any).last_update).split('T')[0];
+        } else if (equipment.updated_at) {
+          // Fallback to updated_at timestamp
           try {
-            const updatedDate = new Date(updatedAtValue);
+            const updatedDate = new Date(equipment.updated_at);
             if (!isNaN(updatedDate.getTime())) {
               const year = updatedDate.getFullYear();
               const month = String(updatedDate.getMonth() + 1).padStart(2, '0');
               const day = String(updatedDate.getDate()).padStart(2, '0');
-              // Store as date only (YYYY-MM-DD)
-              const dateOnly = `${year}-${month}-${day}`;
-              setOverviewLastUpdateRaw(prev => {
-                if (prev[editingEquipmentId] !== dateOnly) {
-                  return { ...prev, [editingEquipmentId]: dateOnly };
-                }
-                return prev;
-              });
+              dateOnly = `${year}-${month}-${day}`;
             }
           } catch (error) {
             console.error('Error parsing updated_at in useEffect:', error);
           }
+        } else if (equipment.lastUpdate) {
+          // Try to parse lastUpdate if it's a formatted date string
+          try {
+            const parsedDate = new Date(equipment.lastUpdate);
+            if (!isNaN(parsedDate.getTime())) {
+              const year = parsedDate.getFullYear();
+              const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
+              const day = String(parsedDate.getDate()).padStart(2, '0');
+              dateOnly = `${year}-${month}-${day}`;
+            }
+          } catch (error) {
+            console.error('Error parsing lastUpdate in useEffect:', error);
+          }
+        }
+        if (dateOnly) {
+          console.log('📅 useEffect - Setting overviewLastUpdateRaw for', editingEquipmentId, ':', dateOnly);
+          setOverviewLastUpdateRaw(prev => {
+            // Only update if the value is different to avoid unnecessary re-renders
+            if (prev[editingEquipmentId] !== dateOnly) {
+              console.log('📅 useEffect - Updating date from', prev[editingEquipmentId], 'to', dateOnly);
+              return { ...prev, [editingEquipmentId]: dateOnly };
+            }
+            return prev;
+          });
+        } else {
+          console.warn('⚠️ useEffect - No date value found for equipment:', editingEquipmentId);
         }
 
         // Initialize Next Milestone Date
@@ -1471,23 +1496,54 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
     setEditFormData(formData);
 
     // Initialize overview state variables for date inputs
-    // Convert updated_at to date format (YYYY-MM-DD) - date only, no time
-    // Try multiple possible field names for updated_at
-    const updatedAtValue = equipment.updated_at || (equipment as any).updatedAt || equipment.lastUpdate;
-    if (updatedAtValue) {
+    // For standalone equipment, prioritize last_update (DATE column) over updated_at (timestamp)
+    // last_update is already in YYYY-MM-DD format from the database
+    console.log('🔧 handleEditEquipment - Initializing date for equipment:', {
+      id: equipment.id,
+      last_update: (equipment as any).last_update,
+      updated_at: equipment.updated_at,
+      lastUpdate: equipment.lastUpdate
+    });
+    
+    let dateOnly = '';
+    if ((equipment as any).last_update) {
+      // Use last_update directly if available (already in YYYY-MM-DD format)
+      dateOnly = String((equipment as any).last_update).split('T')[0];
+      console.log('✅ Using last_update:', dateOnly);
+    } else if (equipment.updated_at) {
+      // Fallback to updated_at timestamp
       try {
-        const updatedDate = new Date(updatedAtValue);
+        const updatedDate = new Date(equipment.updated_at);
         if (!isNaN(updatedDate.getTime())) {
           const year = updatedDate.getFullYear();
           const month = String(updatedDate.getMonth() + 1).padStart(2, '0');
           const day = String(updatedDate.getDate()).padStart(2, '0');
-          // Store as date only (YYYY-MM-DD)
-          const dateOnly = `${year}-${month}-${day}`;
-          setOverviewLastUpdateRaw(prev => ({ ...prev, [equipment.id]: dateOnly }));
+          dateOnly = `${year}-${month}-${day}`;
+          console.log('✅ Using updated_at:', dateOnly);
         }
       } catch (error) {
-        console.error('Error parsing updated_at:', error, 'Value:', updatedAtValue);
+        console.error('Error parsing updated_at:', error, 'Value:', equipment.updated_at);
       }
+    } else if (equipment.lastUpdate) {
+      // Try to parse lastUpdate if it's a formatted date string
+      try {
+        const parsedDate = new Date(equipment.lastUpdate);
+        if (!isNaN(parsedDate.getTime())) {
+          const year = parsedDate.getFullYear();
+          const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
+          const day = String(parsedDate.getDate()).padStart(2, '0');
+          dateOnly = `${year}-${month}-${day}`;
+          console.log('✅ Using lastUpdate:', dateOnly);
+        }
+      } catch (error) {
+        console.error('Error parsing lastUpdate:', error, 'Value:', equipment.lastUpdate);
+      }
+    }
+    if (dateOnly) {
+      console.log('📅 Setting overviewLastUpdateRaw for', equipment.id, ':', dateOnly);
+      setOverviewLastUpdateRaw(prev => ({ ...prev, [equipment.id]: dateOnly }));
+    } else {
+      console.warn('⚠️ No date value found for equipment:', equipment.id);
     }
 
     // Convert nextMilestoneDate to date format (YYYY-MM-DD)
@@ -1521,10 +1577,12 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         // console.log('✅ Marking equipment as completed:', equipment.id);
 
         // Prepare completion data with proper field mapping
-        const completionData = {
+        const todayDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+        const completionData: any = {
           status: 'completed',
           progress_phase: 'dispatched',
-          progress: 100
+          progress: 100,
+          completion_date: todayDate // Set dispatch date to today
         };
 
         // Call backend API to update equipment status
@@ -1535,6 +1593,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         }
 
         // Update the local equipment data
+        const dispatchDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
         setLocalEquipment(prev => prev.map(eq =>
           eq.id === equipment.id
             ? {
@@ -1542,7 +1601,8 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
               status: 'completed' as const,
               progressPhase: 'dispatched' as const,
               progress: 100,
-              lastUpdate: new Date().toISOString().split('T')[0], // Store as date only (YYYY-MM-DD)
+              completionDate: dispatchDate, // Set dispatch date to today
+              lastUpdate: dispatchDate, // Store as date only (YYYY-MM-DD)
               poCdd: new Date().toLocaleDateString()
             }
             : eq
@@ -1592,10 +1652,16 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
       }
 
       // Prepare phase change data with proper field mapping
-      const phaseData = {
+      const phaseData: any = {
         progress_phase: newPhase,
         progress: newProgress
       };
+
+      // If marking as dispatched, set completion_date to today's date (YYYY-MM-DD format)
+      if (newPhase === 'dispatched') {
+        const todayDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+        phaseData.completion_date = todayDate;
+      }
 
       // Call backend API to update equipment phase
       // console.log('🔄 Sending phase data to API:', phaseData);
@@ -1612,7 +1678,9 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
             ...eq,
             progressPhase: newPhase,
             progress: newProgress,
-            lastUpdate: new Date().toLocaleString()
+            lastUpdate: new Date().toLocaleString(),
+            // If dispatched, set completionDate to today
+            ...(newPhase === 'dispatched' ? { completionDate: new Date().toISOString().split('T')[0] } : {})
           }
           : eq
       ));
@@ -1834,34 +1902,34 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
 
       // Add lastUpdate if it was modified (from date input)
       // The database column is DATE type (date only, no time), so send YYYY-MM-DD format
-      if (overviewLastUpdateRaw[editingEquipmentId]) {
-        const dateValue = overviewLastUpdateRaw[editingEquipmentId];
-        if (dateValue) {
-          // Extract just the date part (YYYY-MM-DD) if it includes time
-          const dateOnly = dateValue.split('T')[0];
+      // Always check overviewLastUpdateRaw first as it's the source of truth for the date input
+      const lastUpdateValue = overviewLastUpdateRaw[editingEquipmentId];
+      if (lastUpdateValue && lastUpdateValue.trim() !== '') {
+        // Extract just the date part (YYYY-MM-DD) if it includes time
+        const dateOnly = lastUpdateValue.split('T')[0];
+        if (dateOnly && dateOnly.trim() !== '') {
           equipmentData.last_update = dateOnly;
+          console.log('💾 Saving last_update:', dateOnly);
         }
-      } else if (editFormData.lastUpdate) {
+      } else if (editFormData.lastUpdate && editFormData.lastUpdate.trim() !== '') {
         // Fallback to editFormData.lastUpdate if overviewLastUpdateRaw is not set
         // Extract just the date part if it's a formatted string
         const dateValue = editFormData.lastUpdate;
-        if (dateValue) {
-          // Try to parse if it's a formatted date string, otherwise use as-is
-          try {
-            const parsedDate = new Date(dateValue);
-            if (!isNaN(parsedDate.getTime())) {
-              const year = parsedDate.getFullYear();
-              const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
-              const day = String(parsedDate.getDate()).padStart(2, '0');
-              equipmentData.last_update = `${year}-${month}-${day}`;
-            } else {
-              // If it's already in YYYY-MM-DD format, use it directly
-              equipmentData.last_update = dateValue.split('T')[0];
-            }
-          } catch {
-            // If parsing fails, try to extract date part
+        try {
+          const parsedDate = new Date(dateValue);
+          if (!isNaN(parsedDate.getTime())) {
+            const year = parsedDate.getFullYear();
+            const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
+            const day = String(parsedDate.getDate()).padStart(2, '0');
+            equipmentData.last_update = `${year}-${month}-${day}`;
+            console.log('💾 Saving last_update (from editFormData):', equipmentData.last_update);
+          } else {
+            // If it's already in YYYY-MM-DD format, use it directly
             equipmentData.last_update = dateValue.split('T')[0];
           }
+        } catch {
+          // If parsing fails, try to extract date part
+          equipmentData.last_update = dateValue.split('T')[0];
         }
       }
 
@@ -1914,6 +1982,13 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
       // Reset edit mode
       setEditingEquipmentId(null);
       setEditFormData({});
+      
+      // Clear overview date inputs for the edited equipment
+      setOverviewLastUpdateRaw(prev => {
+        const updated = { ...prev };
+        delete updated[editingEquipmentId];
+        return updated;
+      });
       
       // Clear custom field inputs
       setNewFieldName('');
@@ -5029,7 +5104,8 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                       )}
                     </div>
                     
-                    <div className="space-y-4">
+                    {/* Equipment Logs List - Fixed height container */}
+                    <div className="h-96">
                       {/* Filtered Equipment Logs */}
                       {(() => {
                         // Helper function to format date
@@ -5357,25 +5433,29 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
 
                         if (isLoadingEquipmentLogs) {
                           return (
-                            <div className="text-center py-8 text-gray-500">
-                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-2"></div>
-                              <p>Loading equipment logs...</p>
+                            <div className="h-full flex items-center justify-center text-gray-500">
+                              <div className="text-center">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-2"></div>
+                                <p>Loading equipment logs...</p>
+                              </div>
                             </div>
                           );
                         }
 
                         if (filteredLogs.length === 0) {
                           return (
-                            <div className="text-center py-8 text-gray-500">
-                              <Building size={32} className="mx-auto mb-2 text-gray-300" />
-                              <p>No equipment logs match the search criteria.</p>
-                              <p className="text-sm text-gray-400 mt-1">Try adjusting your search terms.</p>
+                            <div className="h-full flex items-center justify-center text-gray-500">
+                              <div className="text-center">
+                                <Building size={32} className="mx-auto mb-2 text-gray-300" />
+                                <p>No equipment logs match the search criteria.</p>
+                                <p className="text-sm text-gray-400 mt-1">Try adjusting your search terms.</p>
+                              </div>
                             </div>
                           );
                         }
 
                         return (
-                          <div className="max-h-96 overflow-y-auto space-y-3 pr-1.5 sm:pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+                          <div className="h-full overflow-y-auto space-y-3 pr-1.5 sm:pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
                             {filteredLogs.map((log) => {
                               const ActivityIcon = log.activityInfo.icon;
                               
@@ -6818,49 +6898,105 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                       </div>
                     ) : (
                       // View Mode
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between flex-wrap gap-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 bg-gray-400 rounded-full flex-shrink-0"></div>
-                            <span className="text-xs font-medium text-gray-600">PO-CDD</span>
-                            <div className="text-xs sm:text-sm font-medium text-gray-800 truncate">
-                              {item.poCdd}
-                            </div>
-                          </div>
-                          {/* Days Counter / Dispatched Date - Inline with PO-CDD */}
+                      <div className="space-y-1.5">
+                        {/* PO Number and Days Counter - Same Row */}
+                        <div className="flex items-center justify-between gap-2">
+                          {/* PO Number */}
                           {(() => {
-                            if (item.progressPhase === 'dispatched') {
-                              return (
-                                <div className="text-left">
-                                  <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Dispatched on</div>
-                                  <div className="text-xs sm:text-sm font-bold text-green-700 truncate">{item.poCdd}</div>
+                            const poNumber = item.poNumber || (item as any).po_number || (item.custom_fields?.find((f: any) => f.name === 'PO Number')?.value) || item.poCdd;
+                            return poNumber ? (
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
+                                <span className="text-xs font-medium text-gray-600">PO Number:</span>
+                                <div className="text-xs sm:text-sm font-medium text-gray-800 truncate">
+                                  {poNumber}
                                 </div>
-                              );
-                            } else if ((item.poCdd && item.poCdd !== 'To be scheduled') || (item.completionDate && item.completionDate !== 'No deadline set')) {
-                              try {
-                                const deadlineDate = item.completionDate && item.completionDate !== 'No deadline set' 
-                                  ? new Date(item.completionDate) 
-                                  : new Date(item.poCdd);
-                                const today = new Date();
-                                const timeDiff = deadlineDate.getTime() - today.getTime();
-                                const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
-
-                                if (daysDiff < 0) {
-                                  return (
-                                    <div className="text-left">
-                                      <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Days to Completion</div>
-                                      <div className="text-xs sm:text-sm font-bold text-red-700">{Math.abs(daysDiff)} days overdue</div>
+                              </div>
+                            ) : null;
+                          })()}
+                          {/* Days Counter / Dispatched Date - Aligned with PO Number */}
+                          <div className="flex items-center">
+                            {(() => {
+                              if (item.progressPhase === 'dispatched') {
+                                return (
+                                  <div className="text-left">
+                                    <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Dispatched on</div>
+                                    <div className="text-xs sm:text-sm font-bold text-green-700 truncate">
+                                      {(() => {
+                                        // Priority: completionDate (dispatch date) > updated_at > today's date
+                                        let dispatchDate: Date | null = null;
+                                        
+                                        // First, try completionDate (set when dispatched)
+                                        if (item.completionDate && item.completionDate !== 'No deadline set' && item.completionDate !== 'Not specified') {
+                                          try {
+                                            const date = new Date(item.completionDate);
+                                            if (!isNaN(date.getTime())) {
+                                              dispatchDate = date;
+                                            }
+                                          } catch (e) {
+                                            // Continue to next option
+                                          }
+                                        }
+                                        
+                                        // Fallback to updated_at if completionDate not available
+                                        if (!dispatchDate && item.updated_at) {
+                                          try {
+                                            const date = new Date(item.updated_at);
+                                            if (!isNaN(date.getTime())) {
+                                              dispatchDate = date;
+                                            }
+                                          } catch (e) {
+                                            // Continue to next option
+                                          }
+                                        }
+                                        
+                                        // If still no date, use today (shouldn't happen, but safety fallback)
+                                        if (!dispatchDate) {
+                                          dispatchDate = new Date();
+                                        }
+                                        
+                                        return dispatchDate.toLocaleDateString('en-US', { 
+                                          month: 'short', 
+                                          day: 'numeric', 
+                                          year: 'numeric' 
+                                        });
+                                      })()}
                                     </div>
-                                  );
-                                } else {
+                                  </div>
+                                );
+                              } else if ((item.completionDate && item.completionDate !== 'No deadline set' && item.completionDate !== 'Not specified') || (item.poCdd && item.poCdd !== 'To be scheduled')) {
+                                try {
+                                  const deadlineDate = item.completionDate && item.completionDate !== 'No deadline set' && item.completionDate !== 'Not specified'
+                                    ? new Date(item.completionDate) 
+                                    : new Date(item.poCdd);
+                                  const today = new Date();
+                                  const timeDiff = deadlineDate.getTime() - today.getTime();
+                                  const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+
+                                  if (daysDiff < 0) {
+                                    return (
+                                      <div className="text-left">
+                                        <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Days to Completion</div>
+                                        <div className="text-xs sm:text-sm font-bold text-red-700">{Math.abs(daysDiff)} days overdue</div>
+                                      </div>
+                                    );
+                                  } else {
+                                    return (
+                                      <div className="text-left">
+                                        <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Days to Completion</div>
+                                        <div className="text-xs sm:text-sm font-bold text-blue-700">{daysDiff} days to go</div>
+                                      </div>
+                                    );
+                                  }
+                                } catch (error) {
                                   return (
                                     <div className="text-left">
                                       <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Days to Completion</div>
-                                      <div className="text-xs sm:text-sm font-bold text-blue-700">{daysDiff} days to go</div>
+                                      <div className="text-xs sm:text-sm font-bold text-gray-600">No deadline set</div>
                                     </div>
                                   );
                                 }
-                              } catch (error) {
+                              } else {
                                 return (
                                   <div className="text-left">
                                     <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Days to Completion</div>
@@ -6868,15 +7004,33 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                                   </div>
                                 );
                               }
-                            } else {
-                              return (
-                                <div className="text-left">
-                                  <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Days to Completion</div>
-                                  <div className="text-xs sm:text-sm font-bold text-gray-600">No deadline set</div>
-                                </div>
-                              );
-                            }
-                          })()}
+                            })()}
+                          </div>
+                        </div>
+                        {/* PO-CDD / Completion Date */}
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-gray-400 rounded-full flex-shrink-0"></div>
+                          <span className="text-xs font-medium text-gray-600">PO-CDD:</span>
+                          <div className="text-xs sm:text-sm font-medium text-gray-800 truncate">
+                            {(() => {
+                              // Use completion date if available, otherwise use poCdd
+                              if (item.completionDate && item.completionDate !== 'No deadline set' && item.completionDate !== 'Not specified') {
+                                try {
+                                  const completionDate = new Date(item.completionDate);
+                                  if (!isNaN(completionDate.getTime())) {
+                                    return completionDate.toLocaleDateString('en-US', { 
+                                      month: 'short', 
+                                      day: 'numeric', 
+                                      year: 'numeric' 
+                                    });
+                                  }
+                                } catch (e) {
+                                  // Fall through to poCdd
+                                }
+                              }
+                              return item.poCdd && item.poCdd !== 'To be scheduled' ? item.poCdd : 'To be scheduled';
+                            })()}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -7261,7 +7415,9 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                           const equipmentEntries = progressEntries[item.id] || item.progressEntries || [];
                           const latestEntry = equipmentEntries.length > 0 ? equipmentEntries[equipmentEntries.length - 1] : null;
                           // Get last updated value and format it as date only
-                          const lastUpdatedRaw = latestEntry?.date || latestEntry?.created_at || item.lastUpdate || item.updated_at || (item as any).updatedAt || '';
+                          // For standalone equipment, prioritize last_update (DATE column) over other fields
+                          // last_update is already in YYYY-MM-DD format, so use it directly
+                          const lastUpdatedRaw = (item as any).last_update || item.lastUpdate || latestEntry?.date || latestEntry?.created_at || item.updated_at || (item as any).updatedAt || '';
                           const lastUpdatedValue = lastUpdatedRaw ? formatDateOnly(lastUpdatedRaw) : '—';
                           const updateDescription =
                             latestEntry?.text || latestEntry?.comment || latestEntry?.entry_text ||
