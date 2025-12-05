@@ -3542,127 +3542,70 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {localEquipment
-            .filter(eq => {
-              // Phase filter
-              const phaseMatch = selectedPhase === 'all' ? true : eq.progressPhase === selectedPhase;
-              
-              // Search filter
-              if (!phaseMatch) return false;
-              
-              if (searchQuery.trim()) {
-                const searchLower = searchQuery.toLowerCase();
-                const matchesSearch = 
-                  (eq.type || '').toLowerCase().includes(searchLower) ||
-                  (eq.name || '').toLowerCase().includes(searchLower) ||
-                  (eq.tagNumber || '').toLowerCase().includes(searchLower) ||
-                  (eq.jobNumber || '').toLowerCase().includes(searchLower) ||
-                  (eq.manufacturingSerial || '').toLowerCase().includes(searchLower);
-                return matchesSearch;
-              }
-              
-              return true;
-            })
-            .sort((a, b) => {
-              // Sort by lastUpdate date (descending - latest first)
-              if (a.lastUpdate && b.lastUpdate) {
-                const dateA = new Date(a.lastUpdate);
-                const dateB = new Date(b.lastUpdate);
-                return dateB.getTime() - dateA.getTime();
-              }
-              // If no lastUpdate, sort by ID (newer IDs first)
-              return b.id.localeCompare(a.id);
-            })
-            .map((item) => (
-              <Card key={item.id} className="overflow-hidden hover:shadow-lg transition-shadow relative bg-gray-50 border border-gray-200 h-auto sm:min-h-[420px] flex flex-col">
-                <div className="p-3 sm:p-4 flex-1 flex flex-col">
-                  {/* PO-CDD Timer Section */}
-                  <div className="mb-3 sm:mb-4 p-2 sm:p-2.5 bg-gray-50 border border-gray-200 rounded-md">
-                    {editingEquipmentId === item.id ? (
-                      // Edit Mode
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-                          <span className="text-xs font-medium text-gray-600">PO-CDD</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <Label className="text-xs text-gray-600">PO-CDD Date</Label>
-                            <Input
-                              type="date"
-                              value={(() => {
-                                const poCddValue = editFormData.poCdd || item.poCdd;
-                                // Don't set "To be scheduled" as date value
-                                if (!poCddValue || poCddValue === 'To be scheduled') return '';
-                                // Try to parse as date, return empty if invalid
-                                try {
-                                  const date = new Date(poCddValue);
-                                  if (isNaN(date.getTime())) return '';
-                                  const year = date.getFullYear();
-                                  const month = String(date.getMonth() + 1).padStart(2, '0');
-                                  const day = String(date.getDate()).padStart(2, '0');
-                                  return `${year}-${month}-${day}`;
-                                } catch {
-                                  return '';
-                                }
-                              })()}
-                              onChange={(e) => setEditFormData({ ...editFormData, poCdd: e.target.value || 'To be scheduled' })}
-                              className="text-xs h-8"
-                            />
-                          </div>
+        {localEquipment
+          .filter(eq => {
+            // Phase filter
+            const phaseMatch = selectedPhase === 'all' ? true : eq.progressPhase === selectedPhase;
+            
+            // Search filter
+            if (!phaseMatch) return false;
+            
+            if (searchQuery.trim()) {
+              const searchLower = searchQuery.toLowerCase();
+              const matchesSearch = 
+                (eq.type || '').toLowerCase().includes(searchLower) ||
+                (eq.name || '').toLowerCase().includes(searchLower) ||
+                (eq.tagNumber || '').toLowerCase().includes(searchLower) ||
+                (eq.jobNumber || '').toLowerCase().includes(searchLower) ||
+                (eq.manufacturingSerial || '').toLowerCase().includes(searchLower);
+              return matchesSearch;
+            }
+            
+            return true;
+          })
+          .sort((a, b) => {
+            // Sort by lastUpdate date (descending - latest first)
+            if (a.lastUpdate && b.lastUpdate) {
+              const dateA = new Date(a.lastUpdate);
+              const dateB = new Date(b.lastUpdate);
+              return dateB.getTime() - dateA.getTime();
+            }
+            // If no lastUpdate, sort by ID (newer IDs first)
+            return b.id.localeCompare(a.id);
+          })
+          .map((item) => (
+            <Card key={item.id} className="overflow-hidden hover:shadow-lg transition-shadow relative bg-gray-50 border border-gray-200 h-auto sm:min-h-[420px] flex flex-col">
+              <div className="p-3 sm:p-4 flex-1 flex flex-col">
+                {/* PO-CDD Timer Section */}
+                <div className="mb-3 sm:mb-4 p-2 sm:p-2.5 bg-gray-50 border border-gray-200 rounded-md">
+                  {editingEquipmentId === item.id ? (
+                    // Edit Mode
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                        <span className="text-xs font-medium text-gray-600">PO-CDD</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="text-xs text-gray-600">PO-CDD Date</Label>
+                          <Input
+                            type="date"
+                            value={editFormData.poCdd || item.poCdd}
+                            onChange={(e) => setEditFormData({ ...editFormData, poCdd: e.target.value })}
+                            className="text-xs h-8"
+                          />
                         </div>
                         <div>
                           <Label className="text-xs text-gray-600">Certification Title</Label>
-                          {showNewCertificationInput[item.id] ? (
-                            <div className="space-y-2">
-                              <Input
-                                type="text"
-                                value={newCertificationTitle[item.id] || ''}
-                                onChange={(e) => setNewCertificationTitle({ ...newCertificationTitle, [item.id]: e.target.value })}
-                                placeholder="Enter new certification title"
-                                className="text-xs h-8"
-                              />
-                              <div className="flex gap-2">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  onClick={() => {
-                                    const newTitle = newCertificationTitle[item.id]?.trim();
-                                    if (newTitle) {
-                                      setEditFormData({ ...editFormData, certificationTitle: newTitle });
-                                      if (!previousCertificationTitles.includes(newTitle)) {
-                                        setPreviousCertificationTitles([...previousCertificationTitles, newTitle]);
-                                      }
-                                    }
-                                    setShowNewCertificationInput({ ...showNewCertificationInput, [item.id]: false });
-                                    setNewCertificationTitle({ ...newCertificationTitle, [item.id]: '' });
-                                  }}
-                                  className="text-xs h-7 bg-blue-600 hover:bg-blue-700"
-                                >
-                                  Add
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setShowNewCertificationInput({ ...showNewCertificationInput, [item.id]: false });
-                                    setNewCertificationTitle({ ...newCertificationTitle, [item.id]: '' });
-                                  }}
-                                  className="text-xs h-7"
-                                >
-                                  Cancel
-                                </Button>
-                              </div>
-                            </div>
-                          ) : (
+                          {!showNewCertificationInput[item.id] ? (
                             <Select
-                              value={editFormData.certificationTitle || item.certificationTitle || ''}
+                              value={editFormData.certificationTitle || undefined}
                               onValueChange={(value) => {
-                                if (value === 'add_new' && previousCertificationTitles.length > 0) {
-                                  setShowNewCertificationInput({ ...showNewCertificationInput, [item.id]: true });
-                                } else if (value !== 'add_new') {
-                                  setEditFormData({ ...editFormData, certificationTitle: value });
+                                if (value === '+new') {
+                                  setShowNewCertificationInput(prev => ({ ...prev, [item.id]: true }));
+                                  setNewCertificationTitle('');
+                                } else {
+                                  setEditFormData({ ...editFormData, certificationTitle: value || undefined });
                                 }
                               }}
                             >
@@ -3670,74 +3613,126 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                                 <SelectValue placeholder="Select certification title" />
                               </SelectTrigger>
                               <SelectContent>
-                                {previousCertificationTitles.length > 0 && previousCertificationTitles.map((title) => (
-                                  <SelectItem key={title} value={title}>
-                                    {title}
-                                  </SelectItem>
-                                ))}
                                 {previousCertificationTitles.length > 0 && (
-                                  <SelectItem value="add_new" className="text-blue-600 font-medium">
-                                    + Add New
+                                  previousCertificationTitles.map((title) => (
+                                    <SelectItem key={title} value={title}>
+                                      {title}
+                                    </SelectItem>
+                                  ))
+                                )}
+                                <SelectItem value="+new" className="text-blue-600 font-medium">
+                                  <Plus className="w-3 h-3 inline mr-1" />
+                                  New
+                                </SelectItem>
+                                {editFormData.certificationTitle && !previousCertificationTitles.includes(editFormData.certificationTitle) && (
+                                  <SelectItem value={editFormData.certificationTitle}>
+                                    {editFormData.certificationTitle}
                                   </SelectItem>
                                 )}
                               </SelectContent>
                             </Select>
+                          ) : (
+                            <div className="flex gap-1">
+                              <Input
+                                placeholder="Enter certification title"
+                                value={newCertificationTitle}
+                                onChange={(e) => setNewCertificationTitle(e.target.value)}
+                                className="text-xs h-8 flex-1"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && newCertificationTitle.trim()) {
+                                    const title = newCertificationTitle.trim();
+                                    setEditFormData({ ...editFormData, certificationTitle: title });
+                                    if (!previousCertificationTitles.includes(title)) {
+                                      setPreviousCertificationTitles(prev => [...prev, title].sort());
+                                    }
+                                    setShowNewCertificationInput(prev => ({ ...prev, [item.id]: false }));
+                                    setNewCertificationTitle('');
+                                  } else if (e.key === 'Escape') {
+                                    setShowNewCertificationInput(prev => ({ ...prev, [item.id]: false }));
+                                    setNewCertificationTitle('');
+                                  }
+                                }}
+                                autoFocus
+                              />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 px-2"
+                                onClick={() => {
+                                  if (newCertificationTitle.trim()) {
+                                    const title = newCertificationTitle.trim();
+                                    setEditFormData({ ...editFormData, certificationTitle: title });
+                                    if (!previousCertificationTitles.includes(title)) {
+                                      setPreviousCertificationTitles(prev => [...prev, title].sort());
+                                    }
+                                  }
+                                  setShowNewCertificationInput(prev => ({ ...prev, [item.id]: false }));
+                                  setNewCertificationTitle('');
+                                }}
+                              >
+                                <Check className="w-3 h-3" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 px-2"
+                                onClick={() => {
+                                  setShowNewCertificationInput(prev => ({ ...prev, [item.id]: false }));
+                                  setNewCertificationTitle('');
+                                }}
+                              >
+                                <X className="w-3 h-3" />
+                              </Button>
+                            </div>
                           )}
                         </div>
                       </div>
-                    ) : (
-                      // View Mode
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between flex-wrap gap-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 bg-gray-400 rounded-full flex-shrink-0"></div>
-                            <span className="text-xs font-medium text-gray-600">PO-CDD</span>
-                            <div className="text-xs sm:text-sm font-medium text-gray-800 truncate">
-                              {item.poCdd}
-                            </div>
+                    </div>
+                  ) : (
+                    // View Mode
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-gray-400 rounded-full flex-shrink-0"></div>
+                          <span className="text-xs font-medium text-gray-600">PO-CDD</span>
+                          <div className="text-xs sm:text-sm font-medium text-gray-800 truncate">
+                            {item.poCdd}
                           </div>
-                          {/* Days Counter / Dispatched Date - Inline with PO-CDD */}
-                          {(() => {
-                            if (item.progressPhase === 'dispatched') {
-                              return (
-                                <div className="text-left">
-                                  <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Dispatched on</div>
-                                  <div className="text-xs sm:text-sm font-bold text-green-700 truncate">{item.poCdd}</div>
-                                </div>
-                              );
-                            } else if ((item.poCdd && item.poCdd !== 'To be scheduled') || (item.completionDate && item.completionDate !== 'No deadline set')) {
-                              try {
-                                const deadlineDate = item.completionDate && item.completionDate !== 'No deadline set' 
-                                  ? new Date(item.completionDate) 
-                                  : new Date(item.poCdd);
-                                const today = new Date();
-                                const timeDiff = deadlineDate.getTime() - today.getTime();
-                                const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+                        </div>
+                        {/* Days Counter / Dispatched Date - Inline with PO-CDD */}
+                        {(() => {
+                          if (item.progressPhase === 'dispatched') {
+                            return (
+                              <div className="text-left">
+                                <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Dispatched on</div>
+                                <div className="text-xs sm:text-sm font-bold text-green-700 truncate">{item.poCdd}</div>
+                              </div>
+                            );
+                          } else if ((item.poCdd && item.poCdd !== 'To be scheduled') || (item.completionDate && item.completionDate !== 'No deadline set')) {
+                            try {
+                              const deadlineDate = item.completionDate && item.completionDate !== 'No deadline set' 
+                                ? new Date(item.completionDate) 
+                                : new Date(item.poCdd);
+                              const today = new Date();
+                              const timeDiff = deadlineDate.getTime() - today.getTime();
+                              const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
 
-                                if (daysDiff < 0) {
-                                  return (
-                                    <div className="text-left">
-                                      <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Days to Completion</div>
-                                      <div className="text-xs sm:text-sm font-bold text-red-700">{Math.abs(daysDiff)} days overdue</div>
-                                    </div>
-                                  );
-                                } else {
-                                  return (
-                                    <div className="text-left">
-                                      <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Days to Completion</div>
-                                      <div className="text-xs sm:text-sm font-bold text-blue-700">{daysDiff} days to go</div>
-                                    </div>
-                                  );
-                                }
-                              } catch (error) {
+                              if (daysDiff < 0) {
                                 return (
                                   <div className="text-left">
                                     <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Days to Completion</div>
-                                    <div className="text-xs sm:text-sm font-bold text-gray-600">No deadline set</div>
+                                    <div className="text-xs sm:text-sm font-bold text-red-700">{Math.abs(daysDiff)} days overdue</div>
+                                  </div>
+                                );
+                              } else {
+                                return (
+                                  <div className="text-left">
+                                    <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Days to Completion</div>
+                                    <div className="text-xs sm:text-sm font-bold text-blue-700">{daysDiff} days to go</div>
                                   </div>
                                 );
                               }
-                            } else {
+                            } catch (error) {
                               return (
                                 <div className="text-left">
                                   <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Days to Completion</div>
@@ -3745,663 +3740,745 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                                 </div>
                               );
                             }
-                          })()}
-                        </div>
+                          } else {
+                            return (
+                              <div className="text-left">
+                                <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Days to Completion</div>
+                                <div className="text-xs sm:text-sm font-bold text-gray-600">No deadline set</div>
+                              </div>
+                            );
+                          }
+                        })()}
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
+                </div>
 
-                  {/* Progress Image Section */}
-                  <div className="mb-4">
-                    {editingEquipmentId === item.id ? (
-                      // Edit Mode - Upload new progress image
-                      <div className="space-y-3">
-                        <div className="text-sm font-medium text-gray-700">Progress Image</div>
-                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
-                          <input
-                            type="file"
-                            accept="image/*"
-                            capture="environment"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) handleImageUpload(file);
-                            }}
-                            className="hidden"
-                            id={`image-upload-${item.id}`}
-                          />
-                          <label htmlFor={`image-upload-${item.id}`} className="cursor-pointer">
-                            <Camera size={24} className="mx-auto text-gray-400 mb-2" />
-                            <div className="text-sm text-gray-600">
-                              {newProgressImage ? newProgressImage.name : 'Click to upload image'}
-                            </div>
-                          </label>
-                          {newProgressImage && (
-                            <div className="text-xs text-green-600 mt-2">
-                              Selected: {newProgressImage.name}
-                            </div>
+                {/* Progress Image Section */}
+                <div className="mb-4">
+                  {editingEquipmentId === item.id ? (
+                    // Edit Mode - Upload new progress image
+                    <div className="space-y-3">
+                      <div className="text-sm font-medium text-gray-700">Progress Image</div>
+                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleImageUpload(file);
+                          }}
+                          className="hidden"
+                          id={`image-upload-${item.id}`}
+                        />
+                        <label htmlFor={`image-upload-${item.id}`} className="cursor-pointer">
+                          <Camera size={24} className="mx-auto text-gray-400 mb-2" />
+                          <div className="text-sm text-gray-600">
+                            {newProgressImage ? newProgressImage.name : 'Click to upload image'}
+                          </div>
+                        </label>
+                        {newProgressImage && (
+                          <div className="text-xs text-green-600 mt-2">
+                            Selected: {newProgressImage.name}
+                          </div>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <Input
+                          placeholder="Describe what this image shows..."
+                          value={imageDescription}
+                          onChange={(e) => setImageDescription(e.target.value)}
+                          className="text-sm pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={isImageRecording ? stopImageAudioRecording : startImageAudioRecording}
+                          className={`absolute right-2 top-1/2 transform -translate-y-1/2 p-1 rounded transition-colors ${isImageRecording
+                              ? 'text-red-600 hover:text-red-700 hover:bg-red-50'
+                              : 'text-blue-600 hover:text-blue-700 hover:bg-blue-50'
+                            }`}
+                          title={isImageRecording ? "Stop recording" : "Add audio description"}
+                        >
+                          {isImageRecording ? (
+                            <MicOff className="w-4 h-4" />
+                          ) : (
+                            <Mic className="w-4 h-4" />
                           )}
-                        </div>
-                        <div className="relative">
-                          <Input
-                            placeholder="Describe what this image shows..."
-                            value={imageDescription}
-                            onChange={(e) => setImageDescription(e.target.value)}
-                            className="text-sm pr-10"
-                          />
-                          <button
-                            type="button"
-                            onClick={isImageRecording ? stopImageAudioRecording : startImageAudioRecording}
-                            className={`absolute right-2 top-1/2 transform -translate-y-1/2 p-1 rounded transition-colors ${isImageRecording
-                                ? 'text-red-600 hover:text-red-700 hover:bg-red-50'
-                                : 'text-blue-600 hover:text-blue-700 hover:bg-blue-50'
-                              }`}
-                            title={isImageRecording ? "Stop recording" : "Add audio description"}
-                          >
-                            {isImageRecording ? (
-                              <MicOff className="w-4 h-4" />
-                            ) : (
-                              <Mic className="w-4 h-4" />
-                            )}
-                          </button>
-                        </div>
+                        </button>
+                      </div>
 
-                        {/* Recording Status */}
-                        {isImageRecording && (
-                          <div className="flex items-center gap-2 mt-2 px-2 py-1 bg-red-50 rounded-md border border-red-200">
-                            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                            <span className="text-xs text-red-600 font-medium">
-                              Recording... {formatDuration(imageRecordingDuration)}
+                      {/* Recording Status */}
+                      {isImageRecording && (
+                        <div className="flex items-center gap-2 mt-2 px-2 py-1 bg-red-50 rounded-md border border-red-200">
+                          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                          <span className="text-xs text-red-600 font-medium">
+                            Recording... {formatDuration(imageRecordingDuration)}
+                          </span>
+                        </div>
+                      )}
+
+                      {imageAudioChunks.length > 0 && !isImageRecording && (
+                        <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-green-50 rounded-md border border-green-200">
+                          <button
+                            onClick={() => {
+                              const reader = new FileReader();
+                              reader.onload = () => {
+                                playImageAudio(reader.result as string);
+                              };
+                              reader.readAsDataURL(imageAudioChunks[0]);
+                            }}
+                            className="flex items-center justify-center w-6 h-6 bg-green-500 hover:bg-green-600 rounded-full text-white transition-colors"
+                            title="Play audio"
+                          >
+                            <Play className="w-3 h-3 ml-0.5" />
+                          </button>
+                          <div className="flex-1">
+                            <span className="text-xs text-green-600 font-medium">
+                              Audio recorded ({formatDuration(imageRecordingDuration)})
                             </span>
                           </div>
-                        )}
-
-                        {imageAudioChunks.length > 0 && !isImageRecording && (
-                          <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-green-50 rounded-md border border-green-200">
-                            <button
-                              onClick={() => {
-                                const reader = new FileReader();
-                                reader.onload = () => {
-                                  playImageAudio(reader.result as string);
-                                };
-                                reader.readAsDataURL(imageAudioChunks[0]);
-                              }}
-                              className="flex items-center justify-center w-6 h-6 bg-green-500 hover:bg-green-600 rounded-full text-white transition-colors"
-                              title="Play audio"
-                            >
-                              <Play className="w-3 h-3 ml-0.5" />
-                            </button>
-                            <div className="flex-1">
-                              <span className="text-xs text-green-600 font-medium">
-                                Audio recorded ({formatDuration(imageRecordingDuration)})
-                              </span>
-                            </div>
-                            <button
-                              onClick={removeImageAudio}
-                              className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
-                              title="Remove audio"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      // View Mode - Show progress image
-                      <div className="space-y-2">
-                        <div className="text-sm font-medium text-gray-700">Progress Image</div>
-                        {item.progressImages && item.progressImages.length > 0 ? (
-                          <div className="space-y-2">
-                            {/* Progress Image Display with Navigation */}
-                            <div className="relative">
-                              {(() => {
-                                const currentIndex = currentProgressImageIndex[item.id] || 0;
-                                const currentImage = item.progressImages[currentIndex];
+                          <button
+                            onClick={removeImageAudio}
+                            className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
+                            title="Remove audio"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    // View Mode - Show progress image
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-gray-700">Progress Image</div>
+                      {item.progressImages && item.progressImages.length > 0 ? (
+                        <div className="space-y-2">
+                          {/* Progress Image Display with Navigation */}
+                          <div className="relative">
+                            {(() => {
+                              const currentIndex = currentProgressImageIndex[item.id] || 0;
+                              const currentImage = item.progressImages[currentIndex];
 
 
-                                if (!currentImage) {
-                                  return (
-                                    <div className="w-full h-64 bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
-                                      <div className="text-center text-gray-500">
-                                        <Camera size={24} className="mx-auto mb-2" />
-                                        <div className="text-sm">Image not found</div>
-                                      </div>
-                                    </div>
-                                  );
-                                }
-
+                              if (!currentImage) {
                                 return (
-                                  <div 
-                                    className="relative cursor-pointer group"
-                                    onClick={() => {
-                                      setShowImagePreview({ url: currentImage, equipmentId: item.id, currentIndex: currentIndex });
-                                    }}
-                                  >
-                                    <img
-                                      src={currentImage}
-                                      alt="Progress"
-                                      className="w-full h-64 object-cover rounded-lg border border-gray-200 pointer-events-none"
-                                    />
-
-                                    {/* Eye Button */}
-                                    <button
-                                      className="absolute top-2 right-2 bg-white text-gray-800 p-1 rounded text-xs z-20 border border-gray-300 shadow-sm hover:bg-gray-50"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setShowImagePreview({ url: currentImage, equipmentId: item.id, currentIndex: currentIndex });
-                                      }}
-                                      title="View larger image"
-                                    >
-                                      <Eye className="w-4 h-4" />
-                                    </button>
-
-                                    {/* Navigation arrows for multiple images */}
-                                    {item.progressImages.length > 1 && (
-                                      <>
-                                        <button
-                                          className="absolute left-2 top-1/2 transform -translate-y-1/2 bg-black bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-70 transition-all z-10"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const prevIndex = currentIndex > 0 ? currentIndex - 1 : item.progressImages.length - 1;
-                                            setCurrentProgressImageIndex(prev => ({
-                                              ...prev,
-                                              [item.id]: prevIndex
-                                            }));
-                                          }}
-                                        >
-                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                                          </svg>
-                                        </button>
-                                        <button
-                                          className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-black bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-70 transition-all z-10"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const nextIndex = currentIndex < item.progressImages.length - 1 ? currentIndex + 1 : 0;
-                                            setCurrentProgressImageIndex(prev => ({
-                                              ...prev,
-                                              [item.id]: nextIndex
-                                            }));
-                                          }}
-                                        >
-                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                          </svg>
-                                        </button>
-                                      </>
-                                    )}
-
-                                    {/* Image counter */}
-                                    <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded z-10 pointer-events-none">
-                                      {currentIndex + 1} of {item.progressImages.length}
-                                    </div>
-
-                                    {/* Hover overlay */}
-                                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded-lg flex items-center justify-center pointer-events-none">
-                                      <Eye size={24} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  <div className="w-full h-64 bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
+                                    <div className="text-center text-gray-500">
+                                      <Camera size={24} className="mx-auto mb-2" />
+                                      <div className="text-sm">Image not found</div>
                                     </div>
                                   </div>
                                 );
-                              })()}
-                            </div>
+                              }
 
+                              return (
+                                <div 
+                                  className="relative cursor-pointer group"
+                                  onClick={() => {
+                                    setShowImagePreview({ url: currentImage, equipmentId: item.id, currentIndex: currentIndex });
+                                  }}
+                                >
+                                  <img
+                                    src={currentImage}
+                                    alt="Progress"
+                                    className="w-full h-64 object-cover rounded-lg border border-gray-200 pointer-events-none"
+                                  />
 
+                                  {/* Eye Button */}
+                                  <button
+                                    className="absolute top-2 right-2 bg-white text-gray-800 p-1 rounded text-xs z-20 border border-gray-300 shadow-sm hover:bg-gray-50"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setShowImagePreview({ url: currentImage, equipmentId: item.id, currentIndex: currentIndex });
+                                    }}
+                                    title="View larger image"
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </button>
+
+                                  {/* Navigation arrows for multiple images */}
+                                  {item.progressImages.length > 1 && (
+                                    <>
+                                      <button
+                                        className="absolute left-2 top-1/2 transform -translate-y-1/2 bg-black bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-70 transition-all z-10"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const prevIndex = currentIndex > 0 ? currentIndex - 1 : item.progressImages.length - 1;
+                                          setCurrentProgressImageIndex(prev => ({
+                                            ...prev,
+                                            [item.id]: prevIndex
+                                          }));
+                                        }}
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                        </svg>
+                                      </button>
+                                      <button
+                                        className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-black bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-70 transition-all z-10"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const nextIndex = currentIndex < item.progressImages.length - 1 ? currentIndex + 1 : 0;
+                                          setCurrentProgressImageIndex(prev => ({
+                                            ...prev,
+                                            [item.id]: nextIndex
+                                          }));
+                                        }}
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                        </svg>
+                                      </button>
+                                    </>
+                                  )}
+
+                                  {/* Image counter */}
+                                  <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded z-10 pointer-events-none">
+                                    {currentIndex + 1} of {item.progressImages.length}
+                                  </div>
+
+                                  {/* Hover overlay */}
+                                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded-lg flex items-center justify-center pointer-events-none">
+                                    <Eye size={24} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
-                        ) : (
-                          <div className="w-full h-64 bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
-                            <div className="text-center text-gray-500">
-                              <Camera size={24} className="mx-auto mb-2" />
-                              <div className="text-sm">No progress image</div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-start justify-between mb-3 sm:mb-4">
-                    <div className="flex-1 min-w-0 pr-2">
-                      <h3 className="font-semibold text-foreground truncate text-sm sm:text-base mb-1">
-                        {item.name || item.type}
-                      </h3>
-                      <p className="text-xs sm:text-sm text-muted-foreground">Tag: {item.tagNumber || '—'}</p>
-                      <div className="flex flex-col gap-1 mt-1 text-xs text-gray-500">
-                        <span className="truncate">MSN: {item.manufacturingSerial || '—'}</span>
-                        <span className="truncate">Job: {item.jobNumber || '—'}</span>
-                      </div>
-                    </div>
-
-                    {/* Phase Status Dropdown and Certification Title */}
-                    <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                      <Select
-                        value={item.progressPhase}
-                        onValueChange={(value) => handleProgressPhaseChange(item.id, value as 'documentation' | 'manufacturing' | 'testing' | 'dispatched')}
-                        disabled={loadingStates[`phase-${item.id}`]}
-                      >
-                        <SelectTrigger className="w-28 sm:w-32 md:w-36 h-7 text-xs">
-                          <SelectValue />
-                          {loadingStates[`phase-${item.id}`] && (
-                            <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-                          )}
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="documentation">Documentation</SelectItem>
-                          <SelectItem value="manufacturing">Manufacturing</SelectItem>
-                          <SelectItem value="testing">Testing</SelectItem>
-                          <SelectItem value="dispatched">Dispatched</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      {item.certificationTitle && (
-                        <Badge className="text-[9px] sm:text-[10px] md:text-xs px-2 sm:px-2.5 md:px-3 py-0.5 sm:py-1 flex-shrink-0 bg-gray-100 text-gray-700 border border-gray-300 rounded-full">
-                          {item.certificationTitle}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
 
 
-
-
-
-
-                  <Tabs defaultValue="overview" className="w-full flex-1 flex flex-col">
-                    <TabsList className="grid w-full grid-cols-5 h-8 sm:h-9">
-                      <TabsTrigger value="overview" className="text-xs px-2 sm:px-3">Overview</TabsTrigger>
-                      <TabsTrigger value="technical" className="text-xs px-2 sm:px-3">Technical</TabsTrigger>
-                      <TabsTrigger value="team" className="text-xs px-2 sm:px-3">Team</TabsTrigger>
-                      <TabsTrigger value="progress" className="text-xs px-2 sm:px-3">Updates</TabsTrigger>
-                      <TabsTrigger
-                        value="documents"
-                        className="text-xs px-2 sm:px-3"
-                        onClick={() => handleDocsTabClick(item.id)}
-                      >
-                        Docs
-                      </TabsTrigger>
-                    </TabsList>
-
-                    <TabsContent value="overview" className="mt-3 sm:mt-4 space-y-3">
-                      {editingEquipmentId === item.id ? (
-                        <div className="space-y-4">
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div>
-                              <Label className="text-xs text-gray-600">Size</Label>
-                              <Input
-                                placeholder="e.g., 4.2m x 1.6m"
-                                value={editFormData.size ?? ''}
-                                onChange={(e) => setEditFormData({...editFormData, size: e.target.value})}
-                                className="text-xs h-8"
-                              />
-                              <p className="text-[11px] text-gray-400 mt-1">Dimensions (length × width × height)</p>
-                            </div>
-                            <div>
-                              <Label className="text-xs text-gray-600">Material</Label>
-                              <Input
-                                placeholder="e.g., SS 304, Carbon Steel"
-                                value={editFormData.material ?? ''}
-                                onChange={(e) => setEditFormData({...editFormData, material: e.target.value})}
-                                className="text-xs h-8"
-                              />
-                              <p className="text-[11px] text-gray-400 mt-1">Primary material specification</p>
-                            </div>
-                            <div>
-                              <Label className="text-xs text-gray-600">Design Code</Label>
-                              <Input
-                                placeholder="e.g., ASME VIII Div 1, TEMA Class R"
-                                value={editFormData.designCode ?? ''}
-                                onChange={(e) => setEditFormData({...editFormData, designCode: e.target.value})}
-                                className="text-xs h-8"
-                              />
-                              <p className="text-[11px] text-gray-400 mt-1">Applicable design standard</p>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div>
-                              <Label className="text-xs text-gray-600">Last Updated On</Label>
-                              <Input
-                                type="date"
-                                value={overviewLastUpdateRaw[item.id] || ''}
-                                onChange={(e) => {
-                                  const raw = e.target.value;
-                                  setOverviewLastUpdateRaw(prev => ({ ...prev, [item.id]: raw }));
-                                  if (raw) {
-                                    const date = new Date(raw);
-                                    const formattedDate = date.toLocaleDateString('en-US', {
-                                      month: 'numeric',
-                                      day: 'numeric',
-                                      year: 'numeric'
-                                    });
-                                    setEditFormData({
-                                      ...editFormData,
-                                      lastUpdate: formattedDate
-                                    });
-                                  } else {
-                                    setEditFormData({
-                                      ...editFormData,
-                                      lastUpdate: ''
-                                    });
-                                  }
-                                }}
-                                className="text-xs h-8"
-                              />
-                              <p className="text-[11px] text-gray-400 mt-1">Reference date shown to the team</p>
-                              {overviewLastUpdateRaw[item.id] && (
-                                <p className="text-[11px] text-blue-500 mt-1">
-                                  {(() => {
-                                    try {
-                                      const date = new Date(overviewLastUpdateRaw[item.id]);
-                                      return date.toLocaleDateString('en-US', {
-                                        month: 'numeric',
-                                        day: 'numeric',
-                                        year: 'numeric'
-                                      });
-                                    } catch {
-                                      return overviewLastUpdateRaw[item.id];
-                                    }
-                                  })()}
-                                </p>
-                              )}
-                            </div>
-                            <div>
-                              <Label className="text-xs text-gray-600">Next Milestone Date</Label>
-                              <Input
-                                type="date"
-                                value={overviewNextMilestoneDate[item.id] || (editFormData.nextMilestoneDate ? new Date(editFormData.nextMilestoneDate).toISOString().split('T')[0] : '')}
-                                onChange={(e) => {
-                                  const raw = e.target.value;
-                                  setOverviewNextMilestoneDate(prev => ({ ...prev, [item.id]: raw }));
-                                  setEditFormData({
-                                    ...editFormData,
-                                    nextMilestoneDate: raw ? new Date(raw).toISOString() : undefined
-                                  });
-                                }}
-                                className="text-xs h-8"
-                              />
-                              <p className="text-[11px] text-gray-400 mt-1">Pick the milestone date from the calendar</p>
-                              {(overviewNextMilestoneDate[item.id] || editFormData.nextMilestoneDate) && (
-                                <p className="text-[11px] text-blue-500 mt-1">
-                                  {formatDateDisplay(overviewNextMilestoneDate[item.id] || editFormData.nextMilestoneDate || '')}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                          <div>
-                            <Label className="text-xs text-gray-600">Next Milestone Title / Summary</Label>
-                            <Input
-                              placeholder="e.g., Hydro Test"
-                              value={editFormData.nextMilestone ?? ''}
-                              onChange={(e) => setEditFormData({...editFormData, nextMilestone: e.target.value})}
-                              className="text-xs h-8"
-                            />
-                            <p className="text-[11px] text-gray-400 mt-1">Short description that appears with the milestone date</p>
-                          </div>
-                          <div>
-                            <Label className="text-xs text-gray-600">Update Description / Notes</Label>
-                            <Textarea
-                              placeholder="Share the latest progress, issues, or any client-facing summary"
-                              value={editFormData.notes ?? ''}
-                              onChange={(e) => {
-                                console.log('📝 Notes onChange:', e.target.value);
-                                setEditFormData({...editFormData, notes: e.target.value});
-                              }}
-                              className="text-xs min-h-[88px]"
-                              disabled={false}
-                              readOnly={false}
-                            />
-                            <p className="text-[11px] text-gray-400 mt-1">This summary will surface in the overview snapshot</p>
-                            {process.env.NODE_ENV === 'development' && (
-                              <p className="text-[10px] text-gray-500 mt-1">Debug: editFormData.notes = {String(editFormData.notes ?? 'undefined')}</p>
-                            )}
-                          </div>
                         </div>
                       ) : (
-                        (() => {
-                          const sizeValue = item.size && item.size.trim() !== '' ? item.size : '—';
-                          const materialValue = item.material && item.material.trim() !== '' ? item.material : '—';
-                          const designCodeValue = item.designCode && item.designCode.trim() !== '' ? item.designCode : '—';
-                          const equipmentEntries = progressEntries[item.id] || item.progressEntries || [];
-                          const latestEntry = equipmentEntries.length > 0 ? equipmentEntries[equipmentEntries.length - 1] : null;
-                          const latestEntryAny = latestEntry as any;
-                          
-                          // Get raw date value from various sources
-                          const rawDateValue = latestEntryAny?.date || (latestEntry as ProgressEntry)?.created_at || latestEntryAny?.uploadDate || (latestEntry as ProgressEntry)?.uploadDate || item.lastUpdate || null;
-                          
-                          // Format the date properly
-                          let lastUpdatedValue = '—';
-                          if (rawDateValue) {
-                            try {
-                              // Check if it's already a formatted date (contains '/' or is a short format)
-                              if (typeof rawDateValue === 'string' && (rawDateValue.includes('/') || rawDateValue.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/))) {
-                                // Already formatted, use as is
-                                lastUpdatedValue = rawDateValue;
-                              } else {
-                                // Format the date
-                                const date = new Date(rawDateValue);
-                                if (!isNaN(date.getTime())) {
-                                  lastUpdatedValue = date.toLocaleDateString('en-US', {
-                                    month: 'numeric',
-                                    day: 'numeric',
-                                    year: 'numeric'
-                                  });
-                                } else {
-                                  lastUpdatedValue = rawDateValue;
-                                }
-                              }
-                            } catch (e) {
-                              // If formatting fails, try to use the value as is, or fallback
-                              lastUpdatedValue = item.lastUpdate || '—';
-                            }
-                          } else {
-                            // No date found, use item.lastUpdate as fallback
-                            lastUpdatedValue = item.lastUpdate || '—';
-                          }
-                          const updateDescription =
-                            latestEntryAny?.text || (latestEntry as ProgressEntry)?.comment || (latestEntry as ProgressEntry)?.entry_text ||
-                            (item.notes && item.notes.trim() !== '' ? item.notes : '') ||
-                            (item.nextMilestone && item.nextMilestone.trim() !== '' ? item.nextMilestone : '') ||
-                            'No recent update details shared yet.';
-
-                          return (
-                            <>
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
-                                  <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Size</div>
-                                  <div className="text-sm font-semibold text-gray-900">{sizeValue}</div>
-                                  <div className="text-[11px] text-gray-400 mt-1">Dimensions (L × W × H)</div>
-                                </div>
-                                <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
-                                  <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Material</div>
-                                  <div className="text-sm font-semibold text-gray-900">{materialValue}</div>
-                                  <div className="text-[11px] text-gray-400 mt-1">Primary specification</div>
-                                </div>
-                                <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
-                                  <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Design Code</div>
-                                  <div className="text-sm font-semibold text-gray-900">{designCodeValue}</div>
-                                  <div className="text-[11px] text-gray-400 mt-1">Applicable standard</div>
-                                </div>
-                              </div>
-                              <div className="p-4 rounded-lg border border-blue-100 bg-blue-50">
-                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                                  <div>
-                                    <div className="text-[11px] uppercase tracking-wide text-blue-600">Last Updated</div>
-                                    <div className="text-sm font-semibold text-gray-900 mt-1">{lastUpdatedValue}</div>
-                                  </div>
-                                  {(item.nextMilestone && item.nextMilestone.trim() !== '') || item.nextMilestoneDate ? (
-                                    <div className="text-left sm:text-right">
-                                      <div className="text-[11px] uppercase tracking-wide text-blue-500">Next Milestone</div>
-                                      {item.nextMilestone && item.nextMilestone.trim() !== '' && (
-                                        <div className="text-xs font-medium text-blue-700 mt-1">{item.nextMilestone}</div>
-                                      )}
-                                      {item.nextMilestoneDate && (
-                                        <div className="text-[11px] text-blue-500 mt-1">
-                                          {formatDateDisplay(item.nextMilestoneDate)}
-                                        </div>
-                                      )}
-                                    </div>
-                                  ) : null}
-                                </div>
-                                <div className="mt-3 p-3 rounded-md bg-white/70 border border-blue-100 text-xs text-blue-700 leading-relaxed">
-                                  {updateDescription}
-                                </div>
-                              </div>
-                            </>
-                          );
-                        })()
-                      )}
-                    </TabsContent>
-                    <TabsContent value="technical" className="mt-3 sm:mt-4 space-y-2 flex-1 flex flex-col">
-                      <div className="space-y-2 text-xs sm:text-sm flex-1 flex flex-col">
-                        {/* Technical Section Buttons */}
-                        <div className="overflow-x-auto overflow-y-hidden scroll-smooth mb-4 -mx-1 px-1">
-                          <div className="flex flex-nowrap sm:flex-wrap gap-2 min-w-max sm:min-w-0">
-                            {technicalSections[item.id] && technicalSections[item.id].length > 0 && (
-                              <>
-                                {technicalSections[item.id].map((section) => (
-                                  <Button
-                                    key={section.name}
-                                    variant={selectedSection[item.id] === section.name ? "default" : "outline"}
-                                    size="sm"
-                                    onClick={() => setSelectedSection(prev => ({ ...prev, [item.id]: section.name }))}
-                                    onDoubleClick={() => {
-                                      setEditingEquipmentId(item.id);
-                                      setEditingSectionName(section.name);
-                                      setEditingSectionOldName(section.name);
-                                      setIsEditSectionModalOpen(true);
-                                    }}
-                                    className={`text-xs sm:text-sm px-3 py-1.5 sm:py-1 h-8 sm:h-7 whitespace-nowrap flex-shrink-0 ${selectedSection[item.id] === section.name
-                                      ? 'bg-blue-600 text-white'
-                                      : 'bg-white text-gray-700 border-gray-300'
-                                      }`}
-                                  >
-                                    {section.name}
-                                  </Button>
-                                ))}
-                              </>
-                            )}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setEditingEquipmentId(item.id);
-                                setIsAddSectionModalOpen(true);
-                              }}
-                              className="text-xs sm:text-sm px-3 py-1.5 sm:py-1 h-8 sm:h-7 bg-green-100 text-green-700 border-green-300 hover:bg-green-200 whitespace-nowrap flex-shrink-0"
-                            >
-                              <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5 mr-1" />
-                              Add Section
-                            </Button>
+                        <div className="w-full h-64 bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
+                          <div className="text-center text-gray-500">
+                            <Camera size={24} className="mx-auto mb-2" />
+                            <div className="text-sm">No progress image</div>
                           </div>
                         </div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
-                        {/* Selected Section Details */}
-                        {technicalSections[item.id] && technicalSections[item.id].length > 0 ? (
-                          (() => {
-                            // Auto-select first section if no section is selected
-                            const currentSectionName = selectedSection[item.id] || technicalSections[item.id][0]?.name;
-                            const currentSection = technicalSections[item.id].find(s => s.name === currentSectionName);
+                <div className="flex items-start justify-between mb-3 sm:mb-4">
+                  <div className="flex-1 min-w-0 pr-2">
+                    <h3 className="font-semibold text-foreground truncate text-sm sm:text-base">
+                      {item.name || item.type}
+                    </h3>
+                    <p className="text-xs sm:text-sm text-muted-foreground">Tag: {item.tagNumber || '—'}</p>
+                    <div className="flex flex-col gap-1 mt-1 text-xs text-gray-500">
+                      <span className="truncate">MSN: {item.manufacturingSerial || '—'}</span>
+                      <span className="truncate">Job: {item.jobNumber || '—'}</span>
+                    </div>
+                  </div>
 
-                            // Update selected section if not set
-                            if (!selectedSection[item.id] && technicalSections[item.id].length > 0) {
-                              setSelectedSection(prev => ({ ...prev, [item.id]: technicalSections[item.id][0].name }));
-                            }
+                  {/* Phase Status Dropdown */}
+                  <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                    <Select
+                      value={item.progressPhase}
+                      onValueChange={(value) => handleProgressPhaseChange(item.id, value as 'documentation' | 'manufacturing' | 'testing' | 'dispatched')}
+                      disabled={loadingStates[`phase-${item.id}`]}
+                    >
+                      <SelectTrigger className="w-28 sm:w-32 md:w-36 h-7 text-xs">
+                        <SelectValue />
+                        {loadingStates[`phase-${item.id}`] && (
+                          <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                        )}
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="documentation">Documentation</SelectItem>
+                        <SelectItem value="manufacturing">Manufacturing</SelectItem>
+                        <SelectItem value="testing">Testing</SelectItem>
+                        <SelectItem value="dispatched">Dispatched</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {/* Certification Title - Capsule UI below status dropdown */}
+                    {item.certificationTitle && (
+                      <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                        {item.certificationTitle}
+                      </span>
+                    )}
+                  </div>
+                </div>
 
-                            return currentSection ? (
-                              <div className="space-y-3">
-                                {(() => {
-                                  const currentSection = technicalSections[item.id]?.find(s => s.name === selectedSection[item.id]);
-                                  if (!currentSection) return null;
-                                  return (
-                                    <>
-                                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-3">
-                                        <h4 className="text-sm font-semibold text-gray-900">{currentSection.name}</h4>
-                                        <div className="flex flex-row gap-2 flex-nowrap">
+
+
+
+
+
+                <Tabs defaultValue="overview" className="w-full flex-1 flex flex-col">
+                  <TabsList className="grid w-full grid-cols-5 h-8 sm:h-9">
+                    <TabsTrigger value="overview" className="text-xs px-2 sm:px-3">Overview</TabsTrigger>
+                    <TabsTrigger value="technical" className="text-xs px-2 sm:px-3">Technical</TabsTrigger>
+                    <TabsTrigger value="team" className="text-xs px-2 sm:px-3">Team</TabsTrigger>
+                    <TabsTrigger value="progress" className="text-xs px-2 sm:px-3">Updates</TabsTrigger>
+                    <TabsTrigger
+                      value="documents"
+                      className="text-xs px-2 sm:px-3"
+                      onClick={() => handleDocsTabClick(item.id)}
+                    >
+                      Docs
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="overview" className="mt-3 sm:mt-4 space-y-3">
+                    {editingEquipmentId === item.id ? (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div>
+                            <Label className="text-xs text-gray-600">Size</Label>
+                            <Input
+                              placeholder="e.g., 4.2m x 1.6m"
+                              value={editFormData.size ?? ''}
+                              onChange={(e) => setEditFormData({...editFormData, size: e.target.value})}
+                              className="text-xs h-8"
+                            />
+                            <p className="text-[11px] text-gray-400 mt-1">Dimensions (length × width × height)</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-gray-600">Material</Label>
+                            <Input
+                              placeholder="e.g., SS 304, Carbon Steel"
+                              value={editFormData.material ?? ''}
+                              onChange={(e) => setEditFormData({...editFormData, material: e.target.value})}
+                              className="text-xs h-8"
+                            />
+                            <p className="text-[11px] text-gray-400 mt-1">Primary material specification</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-gray-600">Design Code</Label>
+                            <Input
+                              placeholder="e.g., ASME VIII Div 1, TEMA Class R"
+                              value={editFormData.designCode ?? ''}
+                              onChange={(e) => setEditFormData({...editFormData, designCode: e.target.value})}
+                              className="text-xs h-8"
+                            />
+                            <p className="text-[11px] text-gray-400 mt-1">Applicable design standard</p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <Label className="text-xs text-gray-600">Last Updated On</Label>
+                            <Input
+                              type="datetime-local"
+                              value={overviewLastUpdateRaw[item.id] || ''}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                setOverviewLastUpdateRaw(prev => ({ ...prev, [item.id]: raw }));
+                                setEditFormData({
+                                  ...editFormData,
+                                  lastUpdate: raw ? formatDateTimeDisplay(raw) : ''
+                                });
+                              }}
+                              className="text-xs h-8"
+                            />
+                            <p className="text-[11px] text-gray-400 mt-1">Reference timestamp shown to the team</p>
+                            {overviewLastUpdateRaw[item.id] && (
+                              <p className="text-[11px] text-blue-500 mt-1">
+                                {formatDateTimeDisplay(overviewLastUpdateRaw[item.id])}
+                              </p>
+                            )}
+                          </div>
+                          <div>
+                            <Label className="text-xs text-gray-600">Next Milestone Date</Label>
+                            <Input
+                              type="date"
+                              value={overviewNextMilestoneDate[item.id] || ''}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                setOverviewNextMilestoneDate(prev => ({ ...prev, [item.id]: raw }));
+                                setEditFormData({
+                                  ...editFormData,
+                                  nextMilestoneDate: raw ? new Date(raw).toISOString() : undefined
+                                });
+                              }}
+                              className="text-xs h-8"
+                            />
+                            <p className="text-[11px] text-gray-400 mt-1">Pick the milestone date from the calendar</p>
+                            {overviewNextMilestoneDate[item.id] && (
+                              <p className="text-[11px] text-blue-500 mt-1">
+                                {formatDateDisplay(overviewNextMilestoneDate[item.id])}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div>
+                          <Label className="text-xs text-gray-600">Next Milestone Title / Summary</Label>
+                          <Input
+                            placeholder="e.g., Hydro Test"
+                            value={editFormData.nextMilestone ?? ''}
+                            onChange={(e) => setEditFormData({...editFormData, nextMilestone: e.target.value})}
+                            className="text-xs h-8"
+                          />
+                          <p className="text-[11px] text-gray-400 mt-1">Short description that appears with the milestone date</p>
+                        </div>
+                        <div>
+                          <Label className="text-xs text-gray-600">Update Description / Notes</Label>
+                          <Textarea
+                            placeholder="Share the latest progress, issues, or any client-facing summary"
+                            value={editFormData.notes ?? ''}
+                            onChange={(e) => setEditFormData({...editFormData, notes: e.target.value})}
+                            className="text-xs min-h-[88px]"
+                          />
+                          <p className="text-[11px] text-gray-400 mt-1">This summary will surface in the overview snapshot</p>
+                        </div>
+                      </div>
+                    ) : (
+                      (() => {
+                        const sizeValue = item.size && item.size.trim() !== '' ? item.size : '—';
+                        const materialValue = item.material && item.material.trim() !== '' ? item.material : '—';
+                        const designCodeValue = item.designCode && item.designCode.trim() !== '' ? item.designCode : '—';
+                        const equipmentEntries = progressEntries[item.id] || item.progressEntries || [];
+                        const latestEntry = equipmentEntries.length > 0 ? equipmentEntries[equipmentEntries.length - 1] : null;
+                        const lastUpdatedValue = latestEntry?.date || latestEntry?.created_at || item.lastUpdate || '—';
+                        const updateDescription =
+                          latestEntry?.text || latestEntry?.comment || latestEntry?.entry_text ||
+                          (item.notes && item.notes.trim() !== '' ? item.notes : '') ||
+                          (item.nextMilestone && item.nextMilestone.trim() !== '' ? item.nextMilestone : '') ||
+                          'No recent update details shared yet.';
+
+                        return (
+                          <>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
+                                <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Size</div>
+                                <div className="text-sm font-semibold text-gray-900">{sizeValue}</div>
+                                <div className="text-[11px] text-gray-400 mt-1">Dimensions (L × W × H)</div>
+                              </div>
+                              <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
+                                <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Material</div>
+                                <div className="text-sm font-semibold text-gray-900">{materialValue}</div>
+                                <div className="text-[11px] text-gray-400 mt-1">Primary specification</div>
+                              </div>
+                              <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
+                                <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Design Code</div>
+                                <div className="text-sm font-semibold text-gray-900">{designCodeValue}</div>
+                                <div className="text-[11px] text-gray-400 mt-1">Applicable standard</div>
+                              </div>
+                            </div>
+                            <div className="p-4 rounded-lg border border-blue-100 bg-blue-50">
+                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                <div>
+                                  <div className="text-[11px] uppercase tracking-wide text-blue-600">Last Updated</div>
+                                  <div className="text-sm font-semibold text-gray-900 mt-1">{lastUpdatedValue}</div>
+                                </div>
+                                {(item.nextMilestone && item.nextMilestone.trim() !== '') || item.nextMilestoneDate ? (
+                                  <div className="text-left sm:text-right">
+                                    <div className="text-[11px] uppercase tracking-wide text-blue-500">Next Milestone</div>
+                                    {item.nextMilestone && item.nextMilestone.trim() !== '' && (
+                                      <div className="text-xs font-medium text-blue-700 mt-1">{item.nextMilestone}</div>
+                                    )}
+                                    {item.nextMilestoneDate && (
+                                      <div className="text-[11px] text-blue-500 mt-1">
+                                        {formatDateDisplay(item.nextMilestoneDate)}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : null}
+                              </div>
+                              <div className="mt-3 p-3 rounded-md bg-white/70 border border-blue-100 text-xs text-blue-700 leading-relaxed">
+                                {updateDescription}
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="technical" className="mt-3 sm:mt-4 space-y-2 flex-1 flex flex-col">
+                    <div className="space-y-2 text-xs sm:text-sm flex-1 flex flex-col">
+                      {/* Technical Section Buttons */}
+                      <div className="overflow-x-auto overflow-y-hidden scroll-smooth mb-4 -mx-1 px-1">
+                        <div className="flex flex-nowrap sm:flex-wrap gap-2 min-w-max sm:min-w-0">
+                          {technicalSections[item.id] && technicalSections[item.id].length > 0 && (
+                            <>
+                              {technicalSections[item.id].map((section) => (
+                                <Button
+                                  key={section.name}
+                                  variant={selectedSection[item.id] === section.name ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => setSelectedSection(prev => ({ ...prev, [item.id]: section.name }))}
+                                  onDoubleClick={() => {
+                                    setEditingEquipmentId(item.id);
+                                    setEditingSectionName(section.name);
+                                    setEditingSectionOldName(section.name);
+                                    setIsEditSectionModalOpen(true);
+                                  }}
+                                  className={`text-xs sm:text-sm px-3 py-1.5 sm:py-1 h-8 sm:h-7 whitespace-nowrap flex-shrink-0 ${selectedSection[item.id] === section.name
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-white text-gray-700 border-gray-300'
+                                    }`}
+                                >
+                                  {section.name}
+                                </Button>
+                              ))}
+                            </>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setEditingEquipmentId(item.id);
+                              setIsAddSectionModalOpen(true);
+                            }}
+                            className="text-xs sm:text-sm px-3 py-1.5 sm:py-1 h-8 sm:h-7 bg-green-100 text-green-700 border-green-300 hover:bg-green-200 whitespace-nowrap flex-shrink-0"
+                          >
+                            <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5 mr-1" />
+                            Add Section
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Selected Section Details */}
+                      {technicalSections[item.id] && technicalSections[item.id].length > 0 ? (
+                        (() => {
+                          // Auto-select first section if no section is selected
+                          const currentSectionName = selectedSection[item.id] || technicalSections[item.id][0]?.name;
+                          const currentSection = technicalSections[item.id].find(s => s.name === currentSectionName);
+
+                          // Update selected section if not set
+                          if (!selectedSection[item.id] && technicalSections[item.id].length > 0) {
+                            setSelectedSection(prev => ({ ...prev, [item.id]: technicalSections[item.id][0].name }));
+                          }
+
+                          return currentSection ? (
+                            <div className="space-y-3">
+                              {(() => {
+                                const currentSection = technicalSections[item.id]?.find(s => s.name === selectedSection[item.id]);
+                                if (!currentSection) return null;
+                                return (
+                                  <>
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-3">
+                                      <h4 className="text-sm font-semibold text-gray-900">{currentSection.name}</h4>
+                                      <div className="flex flex-row gap-2 flex-nowrap">
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => {
+                                            setShowAddFieldInputs(prev => ({ ...prev, [item.id]: true }));
+                                            setNewFieldName('');
+                                            setNewFieldValue('');
+                                          }}
+                                          className="text-xs px-2 sm:px-3 py-1 h-7 bg-blue-600 text-white hover:bg-blue-700 whitespace-nowrap flex-shrink-0"
+                                        >
+                                          <Plus className="w-3 h-3 sm:mr-1" />
+                                          <span className="hidden sm:inline">Add Custom Field</span>
+                                          <span className="sm:hidden">Add Custom Field</span>
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={async () => {
+                                            if (isEditMode[item.id]) {
+                                              // Done Editing - Save changes directly to database
+                                              try {
+                                                await fastAPI.updateEquipment(item.id, {
+                                                  technical_sections: technicalSections[item.id] || []
+                                                }, user?.id);
+
+                                                toast({
+                                                  title: "Success",
+                                                  description: "Custom fields updated successfully",
+                                                });
+                                              } catch (error) {
+                                                console.error('Error saving custom fields:', error);
+                                                toast({
+                                                  title: "Error",
+                                                  description: "Failed to save custom fields",
+                                                  variant: "destructive",
+                                                });
+                                              }
+                                            }
+                                            
+                                            setIsEditMode(prev => ({ ...prev, [item.id]: !prev[item.id] }));
+                                            setShowAddFieldInputs(prev => ({ ...prev, [item.id]: false }));
+                                          }}
+                                          className="text-xs px-2 sm:px-3 py-1 h-7 bg-green-600 text-white hover:bg-green-700 whitespace-nowrap flex-shrink-0"
+                                        >
+                                          <Edit className="w-3 h-3 sm:mr-1" />
+                                          <span className="hidden sm:inline">{isEditMode[item.id] ? 'Done Editing' : 'Edit Custom Field'}</span>
+                                          <span className="sm:hidden">{isEditMode[item.id] ? 'Done Editing' : 'Edit Custom Field'}</span>
+                                        </Button>
+                                      </div>
+                                    </div>
+
+                                    {/* Add Field Inputs */}
+                                    {showAddFieldInputs[item.id] && (
+                                      <div className="space-y-2 p-3 bg-gray-50 rounded-md border">
+                                        <div className="flex gap-2">
+                                          <Input
+                                            placeholder="Field name (e.g., Pressure)"
+                                            value={newFieldName}
+                                            onChange={(e) => setNewFieldName(e.target.value)}
+                                            className="text-xs h-7"
+                                          />
+                                          <Input
+                                            placeholder="Field value (e.g., 150 PSI)"
+                                            value={newFieldValue}
+                                            onChange={(e) => setNewFieldValue(e.target.value)}
+                                            className="text-xs h-7"
+                                          />
+                                        </div>
+                                        <div className="flex gap-2">
+                                          <Button
+                                            size="sm"
+                                            onClick={async () => {
+                                              // Capture field values before clearing
+                                              const fieldNameToSave = newFieldName.trim();
+                                              const fieldValueToSave = newFieldValue.trim();
+                                              
+                                              // Clear fields immediately but keep form open for next entry
+                                              setNewFieldName('');
+                                              setNewFieldValue('');
+
+                                              if (fieldNameToSave) {
+                                                const newField = { name: fieldNameToSave, value: fieldValueToSave };
+                                                const currentSection = selectedSection[item.id];
+
+                                                if (currentSection) {
+                                                  // Update technical sections with new custom field
+                                                  const updatedSections = (technicalSections[item.id] || []).map(section =>
+                                                    section.name === currentSection
+                                                      ? { ...section, customFields: [...section.customFields, newField] }
+                                                      : section
+                                                  );
+
+                                                  // Update local state
+                                                  setTechnicalSections(prev => ({
+                                                    ...prev,
+                                                    [item.id]: updatedSections
+                                                  }));
+
+                                                  // Save to database using the same API as main save
+                                                  try {
+                                                    await fastAPI.updateEquipment(item.id, {
+                                                      technical_sections: updatedSections
+                                                    }, user?.id);
+
+                                                    toast({
+                                                      title: "Success",
+                                                      description: "Custom field added successfully",
+                                                    });
+                                                  } catch (error) {
+                                                    console.error('Error saving custom field:', error);
+                                                    toast({
+                                                      title: "Error",
+                                                      description: "Failed to save custom field",
+                                                      variant: "destructive",
+                                                    });
+                                                  }
+                                                }
+                                              }
+                                            }}
+                                            className="text-xs px-3 py-1 h-6 bg-green-600 text-white hover:bg-green-700"
+                                          >
+                                            <Check className="w-3 h-3 mr-1" />
+                                            Save
+                                          </Button>
                                           <Button
                                             size="sm"
                                             variant="outline"
                                             onClick={() => {
-                                              setShowAddFieldInputs(prev => ({ ...prev, [item.id]: true }));
+                                              setShowAddFieldInputs(prev => ({ ...prev, [item.id]: false }));
                                               setNewFieldName('');
                                               setNewFieldValue('');
                                             }}
-                                            className="text-xs px-2 sm:px-3 py-1 h-7 bg-blue-600 text-white hover:bg-blue-700 whitespace-nowrap flex-shrink-0"
+                                            className="text-xs px-3 py-1 h-6"
                                           >
-                                            <Plus className="w-3 h-3 sm:mr-1" />
-                                            <span className="hidden sm:inline">Add Custom Field</span>
-                                            <span className="sm:hidden">Add Custom Field</span>
-                                          </Button>
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={async () => {
-                                              if (isEditMode[item.id]) {
-                                                // Done Editing - Save changes directly to database
-                                                try {
-                                                  await fastAPI.updateEquipment(item.id, {
-                                                    technical_sections: technicalSections[item.id] || []
-                                                  }, user?.id);
-
-                                                  toast({
-                                                    title: "Success",
-                                                    description: "Custom fields updated successfully",
-                                                  });
-                                                } catch (error) {
-                                                  console.error('Error saving custom fields:', error);
-                                                  toast({
-                                                    title: "Error",
-                                                    description: "Failed to save custom fields",
-                                                    variant: "destructive",
-                                                  });
-                                                }
-                                              }
-                                              
-                                              setIsEditMode(prev => ({ ...prev, [item.id]: !prev[item.id] }));
-                                              setShowAddFieldInputs(prev => ({ ...prev, [item.id]: false }));
-                                            }}
-                                            className="text-xs px-2 sm:px-3 py-1 h-7 bg-green-600 text-white hover:bg-green-700 whitespace-nowrap flex-shrink-0"
-                                          >
-                                            <Edit className="w-3 h-3 sm:mr-1" />
-                                            <span className="hidden sm:inline">{isEditMode[item.id] ? 'Done Editing' : 'Edit Custom Field'}</span>
-                                            <span className="sm:hidden">{isEditMode[item.id] ? 'Done Editing' : 'Edit Custom Field'}</span>
+                                            <X className="w-3 h-3 mr-1" />
+                                            Cancel
                                           </Button>
                                         </div>
                                       </div>
+                                    )}
 
-                                      {/* Add Field Inputs */}
-                                      {showAddFieldInputs[item.id] && (
-                                        <div className="space-y-2 p-3 bg-gray-50 rounded-md border">
-                                          <div className="flex gap-2">
-                                            <Input
-                                              placeholder="Field name (e.g., Pressure)"
-                                              value={newFieldName}
-                                              onChange={(e) => setNewFieldName(e.target.value)}
-                                              className="text-xs h-7"
-                                            />
-                                            <Input
-                                              placeholder="Field value (e.g., 150 PSI)"
-                                              value={newFieldValue}
-                                              onChange={(e) => setNewFieldValue(e.target.value)}
-                                              className="text-xs h-7"
-                                            />
-                                          </div>
-                                          <div className="flex gap-2">
-                                            <Button
-                                              size="sm"
-                                              onClick={async () => {
-                                                // Capture field values before clearing
-                                                const fieldNameToSave = newFieldName.trim();
-                                                const fieldValueToSave = newFieldValue.trim();
-                                                
-                                                // Clear fields immediately but keep form open for next entry
-                                                setNewFieldName('');
-                                                setNewFieldValue('');
+                                    {/* Display Custom Fields */}
+                                    {(() => {
+                                      const currentSection = technicalSections[item.id]?.find(s => s.name === selectedSection[item.id]);
+                                      const sectionFields = currentSection?.customFields || [];
 
-                                                if (fieldNameToSave) {
-                                                  const newField = { name: fieldNameToSave, value: fieldValueToSave };
-                                                  const currentSection = selectedSection[item.id];
+                                      return sectionFields.length > 0 ? (
+                                        <div className={`grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 max-h-[200px] sm:max-h-64 overflow-y-auto pr-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]`}>
+                                          {sectionFields.map((field, index) => (
+                                            <div key={index} className="flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3 bg-white border border-gray-300 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 gap-2">
+                                              {isEditMode[item.id] ? (
+                                                <div className="flex-1 flex gap-2">
+                                                  <Input
+                                                    value={field.name}
+                                                    onChange={async (e) => {
+                                                      const updatedSections = (technicalSections[item.id] || []).map(section =>
+                                                        section.name === selectedSection[item.id]
+                                                          ? {
+                                                            ...section,
+                                                            customFields: section.customFields.map((f, i) =>
+                                                              i === index ? { ...f, name: e.target.value } : f
+                                                            )
+                                                          }
+                                                          : section
+                                                      );
+                                                      setTechnicalSections(prev => ({
+                                                        ...prev,
+                                                        [item.id]: updatedSections
+                                                      }));
 
-                                                  if (currentSection) {
-                                                    // Update technical sections with new custom field
+                                                      // Save to database immediately
+                                                      try {
+                                                        await updateEquipment(item.id, {
+                                                          technical_sections: updatedSections
+                                                        });
+                                                        // console.log('✅ Field name saved to database, refreshing data...');
+                                                        await refreshEquipmentData();
+                                                      } catch (error) {
+                                                        console.error('Error saving field name change:', error);
+                                                      }
+                                                    }}
+                                                    className="text-xs h-7"
+                                                  />
+                                                  <Input
+                                                    value={field.value}
+                                                    onChange={async (e) => {
+                                                      const updatedSections = (technicalSections[item.id] || []).map(section =>
+                                                        section.name === selectedSection[item.id]
+                                                          ? {
+                                                            ...section,
+                                                            customFields: section.customFields.map((f, i) =>
+                                                              i === index ? { ...f, value: e.target.value } : f
+                                                            )
+                                                          }
+                                                          : section
+                                                      );
+                                                      setTechnicalSections(prev => ({
+                                                        ...prev,
+                                                        [item.id]: updatedSections
+                                                      }));
+
+                                                      // Save to database immediately
+                                                      try {
+                                                        await updateEquipment(item.id, {
+                                                          technical_sections: updatedSections
+                                                        });
+                                                        // console.log('✅ Field value saved to database, refreshing data...');
+                                                        await refreshEquipmentData();
+                                                      } catch (error) {
+                                                        console.error('Error saving field value change:', error);
+                                                      }
+                                                    }}
+                                                    className="text-xs h-7"
+                                                  />
+                                                </div>
+                                              ) : (
+                                                <span className="text-gray-800 font-medium text-xs sm:text-sm break-words">{field.name}: <span className="text-gray-600 font-normal">{field.value}</span></span>
+                                              )}
+                                              {isEditMode[item.id] && (
+                                                <Button
+                                                  size="sm"
+                                                  variant="ghost"
+                                                  onClick={async () => {
                                                     const updatedSections = (technicalSections[item.id] || []).map(section =>
-                                                      section.name === currentSection
-                                                        ? { ...section, customFields: [...section.customFields, newField] }
+                                                      section.name === selectedSection[item.id]
+                                                        ? { ...section, customFields: section.customFields.filter((_, i) => i !== index) }
                                                         : section
                                                     );
 
@@ -4411,1190 +4488,940 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                                                       [item.id]: updatedSections
                                                     }));
 
-                                                    // Save to database using the same API as main save
+                                                    // Save to database
                                                     try {
-                                                      await fastAPI.updateEquipment(item.id, {
+                                                      // console.log('🗑️ Deleting custom field from database:', item.id, updatedSections);
+                                                      await updateEquipment(item.id, {
                                                         technical_sections: updatedSections
-                                                      }, user?.id);
-
+                                                      });
+                                                      // console.log('✅ Custom field deleted successfully');
                                                       toast({
                                                         title: "Success",
-                                                        description: "Custom field added successfully",
+                                                        description: "Custom field deleted successfully",
                                                       });
                                                     } catch (error) {
-                                                      console.error('Error saving custom field:', error);
+                                                      console.error('Error deleting custom field:', error);
                                                       toast({
                                                         title: "Error",
-                                                        description: "Failed to save custom field",
+                                                        description: "Failed to delete custom field",
                                                         variant: "destructive",
                                                       });
                                                     }
-                                                  }
-                                                }
-                                              }}
-                                              className="text-xs px-3 py-1 h-6 bg-green-600 text-white hover:bg-green-700"
-                                            >
-                                              <Check className="w-3 h-3 mr-1" />
-                                              Save
-                                            </Button>
-                                            <Button
-                                              size="sm"
-                                              variant="outline"
-                                              onClick={() => {
-                                                setShowAddFieldInputs(prev => ({ ...prev, [item.id]: false }));
-                                                setNewFieldName('');
-                                                setNewFieldValue('');
-                                              }}
-                                              className="text-xs px-3 py-1 h-6"
-                                            >
-                                              <X className="w-3 h-3 mr-1" />
-                                              Cancel
-                                            </Button>
+                                                  }}
+                                                  className="text-xs p-1 h-6 w-6 hover:bg-red-50 text-red-500 hover:text-red-700 transition-colors duration-200"
+                                                >
+                                                  <X className="w-4 h-4" />
+                                                </Button>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <div className="text-center py-8 text-gray-500 text-sm bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                                          <div className="flex flex-col items-center gap-2">
+                                            <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
+                                              <Plus className="w-6 h-6 text-gray-400" />
+                                            </div>
+                                            <p>No technical specifications added yet.</p>
+                                            <p className="text-xs text-gray-400">Click "Add Custom Field" to add specifications.</p>
                                           </div>
                                         </div>
-                                      )}
+                                      );
+                                    })()}
 
-                                      {/* Display Custom Fields */}
-                                      {(() => {
-                                        const currentSection = technicalSections[item.id]?.find(s => s.name === selectedSection[item.id]);
-                                        const sectionFields = currentSection?.customFields || [];
+                                    {/* New section info removed - using new structure */}
 
-                                        return sectionFields.length > 0 ? (
-                                          <div className={`grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 max-h-[200px] sm:max-h-64 overflow-y-auto pr-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]`}>
-                                            {sectionFields.map((field, index) => (
-                                              <div key={index} className="flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3 bg-white border border-gray-300 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 gap-2">
-                                                {isEditMode[item.id] ? (
-                                                  <div className="flex-1 flex gap-2">
-                                                    <Input
-                                                      value={field.name}
-                                                      onChange={async (e) => {
-                                                        const updatedSections = (technicalSections[item.id] || []).map(section =>
-                                                          section.name === selectedSection[item.id]
-                                                            ? {
-                                                              ...section,
-                                                              customFields: section.customFields.map((f, i) =>
-                                                                i === index ? { ...f, name: e.target.value } : f
-                                                              )
-                                                            }
-                                                            : section
-                                                        );
-                                                        setTechnicalSections(prev => ({
-                                                          ...prev,
-                                                          [item.id]: updatedSections
-                                                        }));
-
-                                                        // Save to database immediately
-                                                        try {
-                                                          await updateEquipment(item.id, {
-                                                            technical_sections: updatedSections
-                                                          });
-                                                          // console.log('✅ Field name saved to database, refreshing data...');
-                                                          await refreshEquipmentData();
-                                                        } catch (error) {
-                                                          console.error('Error saving field name change:', error);
-                                                        }
-                                                      }}
-                                                      className="text-xs h-7"
-                                                    />
-                                                    <Input
-                                                      value={field.value}
-                                                      onChange={async (e) => {
-                                                        const updatedSections = (technicalSections[item.id] || []).map(section =>
-                                                          section.name === selectedSection[item.id]
-                                                            ? {
-                                                              ...section,
-                                                              customFields: section.customFields.map((f, i) =>
-                                                                i === index ? { ...f, value: e.target.value } : f
-                                                              )
-                                                            }
-                                                            : section
-                                                        );
-                                                        setTechnicalSections(prev => ({
-                                                          ...prev,
-                                                          [item.id]: updatedSections
-                                                        }));
-
-                                                        // Save to database immediately
-                                                        try {
-                                                          await updateEquipment(item.id, {
-                                                            technical_sections: updatedSections
-                                                          });
-                                                          // console.log('✅ Field value saved to database, refreshing data...');
-                                                          await refreshEquipmentData();
-                                                        } catch (error) {
-                                                          console.error('Error saving field value change:', error);
-                                                        }
-                                                      }}
-                                                      className="text-xs h-7"
-                                                    />
-                                                  </div>
-                                                ) : (
-                                                  <span className="text-gray-800 font-medium text-xs sm:text-sm break-words">{field.name}: <span className="text-gray-600 font-normal">{field.value}</span></span>
-                                                )}
-                                                {isEditMode[item.id] && (
-                                                  <Button
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    onClick={async () => {
-                                                      const updatedSections = (technicalSections[item.id] || []).map(section =>
-                                                        section.name === selectedSection[item.id]
-                                                          ? { ...section, customFields: section.customFields.filter((_, i) => i !== index) }
-                                                          : section
-                                                      );
-
-                                                      // Update local state
-                                                      setTechnicalSections(prev => ({
-                                                        ...prev,
-                                                        [item.id]: updatedSections
-                                                      }));
-
-                                                      // Save to database
-                                                      try {
-                                                        // console.log('🗑️ Deleting custom field from database:', item.id, updatedSections);
-                                                        await updateEquipment(item.id, {
-                                                          technical_sections: updatedSections
-                                                        });
-                                                        // console.log('✅ Custom field deleted successfully');
-                                                        toast({
-                                                          title: "Success",
-                                                          description: "Custom field deleted successfully",
-                                                        });
-                                                      } catch (error) {
-                                                        console.error('Error deleting custom field:', error);
-                                                        toast({
-                                                          title: "Error",
-                                                          description: "Failed to delete custom field",
-                                                          variant: "destructive",
-                                                        });
-                                                      }
-                                                    }}
-                                                    className="text-xs p-1 h-6 w-6 hover:bg-red-50 text-red-500 hover:text-red-700 transition-colors duration-200"
-                                                  >
-                                                    <X className="w-4 h-4" />
-                                                  </Button>
-                                                )}
-                                              </div>
-                                            ))}
-                                          </div>
-                                        ) : (
-                                          <div className="text-center py-8 text-gray-500 text-sm bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                                            <div className="flex flex-col items-center gap-2">
-                                              <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
-                                                <Plus className="w-6 h-6 text-gray-400" />
-                                              </div>
-                                              <p>No technical specifications added yet.</p>
-                                              <p className="text-xs text-gray-400">Click "Add Custom Field" to add specifications.</p>
-                                            </div>
-                                          </div>
-                                        );
-                                      })()}
-
-                                      {/* New section info removed - using new structure */}
-
-                                    </>
-                                  );
-                                })()}
-                              </div>
-                            ) : null;
-                          })()
-                        ) : (
-                          <div className="text-center py-8 text-gray-500 text-sm">
-                            <div className="flex flex-col items-center gap-2">
-                              <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
-                                <Plus className="w-6 h-6 text-gray-400" />
-                              </div>
-                              <p>Please add section first</p>
-                              <p className="text-xs text-gray-400">Click "+ Add Section" to create a new technical section.</p>
+                                  </>
+                                );
+                              })()}
                             </div>
+                          ) : null;
+                        })()
+                      ) : (
+                        <div className="text-center py-8 text-gray-500 text-sm">
+                          <div className="flex flex-col items-center gap-2">
+                            <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
+                              <Plus className="w-6 h-6 text-gray-400" />
+                            </div>
+                            <p>Please add section first</p>
+                            <p className="text-xs text-gray-400">Click "+ Add Section" to create a new technical section.</p>
                           </div>
-                        )}
+                        </div>
+                      )}
 
-                      </div>
-                    </TabsContent>
+                    </div>
+                  </TabsContent>
 
-                    <TabsContent value="team" className="mt-3 sm:mt-4 space-y-2 flex-1 flex flex-col">
-                      <div className="space-y-2 text-xs sm:text-sm flex-1 flex flex-col">
-                        {editingEquipmentId === item.id ? (
-                          // Edit Mode
-                          <div className="space-y-3">
-                            {false && item.customTeamPositions && item.customTeamPositions.length > 0 && (
-                              <div className="space-y-4">
-                                <h4 className="text-sm font-medium text-gray-700">Custom Team Positions</h4>
-                                {item.customTeamPositions.map((pos, index) => (
-                                  <div key={pos.id} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-                                    <div className="grid grid-cols-2 gap-3">
-                                      <div>
-                                        <Label className="text-xs text-gray-600">Position</Label>
-                                        <Input
-                                          value={pos.position}
-                                          onChange={(e) => {
-                                            const updatedPositions = [...(item.customTeamPositions || [])];
-                                            updatedPositions[index] = { ...updatedPositions[index], position: e.target.value };
-                                            setLocalEquipment(prev => prev.map(eq =>
-                                              eq.id === item.id
-                                                ? { ...eq, customTeamPositions: updatedPositions }
-                                                : eq
-                                            ));
-                                          }}
-                                          className="text-xs h-8"
-                                          placeholder="Position name"
-                                        />
-                                      </div>
-                                      <div>
-                                        <Label className="text-xs text-gray-600">Name</Label>
-                                        <Input
-                                          value={pos.name}
-                                          onChange={(e) => {
-                                            const updatedPositions = [...(item.customTeamPositions || [])];
-                                            updatedPositions[index] = { ...updatedPositions[index], name: e.target.value };
-                                            setLocalEquipment(prev => prev.map(eq =>
-                                              eq.id === item.id
-                                                ? { ...eq, customTeamPositions: updatedPositions }
-                                                : eq
-                                            ));
-                                          }}
-                                          className="text-xs h-8"
-                                          placeholder="Person name"
-                                        />
-                                      </div>
+                  <TabsContent value="team" className="mt-3 sm:mt-4 space-y-2 flex-1 flex flex-col">
+                    <div className="space-y-2 text-xs sm:text-sm flex-1 flex flex-col">
+                      {editingEquipmentId === item.id ? (
+                        // Edit Mode
+                        <div className="space-y-3">
+                          {false && item.customTeamPositions && item.customTeamPositions.length > 0 && (
+                            <div className="space-y-4">
+                              <h4 className="text-sm font-medium text-gray-700">Custom Team Positions</h4>
+                              {item.customTeamPositions.map((pos, index) => (
+                                <div key={pos.id} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <Label className="text-xs text-gray-600">Position</Label>
+                                      <Input
+                                        value={pos.position}
+                                        onChange={(e) => {
+                                          const updatedPositions = [...(item.customTeamPositions || [])];
+                                          updatedPositions[index] = { ...updatedPositions[index], position: e.target.value };
+                                          setLocalEquipment(prev => prev.map(eq =>
+                                            eq.id === item.id
+                                              ? { ...eq, customTeamPositions: updatedPositions }
+                                              : eq
+                                          ));
+                                        }}
+                                        className="text-xs h-8"
+                                        placeholder="Position name"
+                                      />
                                     </div>
-                                    <div className="grid grid-cols-2 gap-3 mt-2">
-                                      <div>
-                                        <Label className="text-xs text-gray-600">Email</Label>
-                                        <Input
-                                          value={pos.email || ''}
-                                          onChange={(e) => {
-                                            const updatedPositions = [...(item.customTeamPositions || [])];
-                                            updatedPositions[index] = { ...updatedPositions[index], email: e.target.value };
-                                            setLocalEquipment(prev => prev.map(eq =>
-                                              eq.id === item.id
-                                                ? { ...eq, customTeamPositions: updatedPositions }
-                                                : eq
-                                            ));
-                                          }}
-                                          className="text-xs h-8"
-                                          placeholder="Email"
-                                        />
-                                      </div>
-                                      <div>
-                                        <Label className="text-xs text-gray-600">Phone</Label>
-                                        <Input
-                                          value={pos.phone || ''}
-                                          onChange={(e) => {
-                                            const updatedPositions = [...(item.customTeamPositions || [])];
-                                            updatedPositions[index] = { ...updatedPositions[index], phone: e.target.value };
-                                            setLocalEquipment(prev => prev.map(eq =>
-                                              eq.id === item.id
-                                                ? { ...eq, customTeamPositions: updatedPositions }
-                                                : eq
-                                            ));
-                                          }}
-                                          className="text-xs h-8"
-                                          placeholder="Phone"
-                                        />
-                                      </div>
+                                    <div>
+                                      <Label className="text-xs text-gray-600">Name</Label>
+                                      <Input
+                                        value={pos.name}
+                                        onChange={(e) => {
+                                          const updatedPositions = [...(item.customTeamPositions || [])];
+                                          updatedPositions[index] = { ...updatedPositions[index], name: e.target.value };
+                                          setLocalEquipment(prev => prev.map(eq =>
+                                            eq.id === item.id
+                                              ? { ...eq, customTeamPositions: updatedPositions }
+                                              : eq
+                                          ));
+                                        }}
+                                        className="text-xs h-8"
+                                        placeholder="Person name"
+                                      />
                                     </div>
                                   </div>
-                                ))}
-                              </div>
-                            )}
-
-                            {/* Add New Team Position */}
-                            <div className="border-t pt-3">
-                              <div className="text-xs font-medium text-gray-700 mb-2">Add New Team Position:</div>
-                              <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                  <Label className="text-xs text-gray-600">Position</Label>
-                                  <Input
-                                    placeholder="e.g., Fabricator, Engineer"
-                                    value={newTeamPosition}
-                                    onChange={(e) => setNewTeamPosition(e.target.value)}
-                                    className="text-xs h-8"
-                                  />
-                                </div>
-                                <div className="relative">
-                                  <Label className="text-xs text-gray-600">Name</Label>
-                                  <div className="relative">
-                                    <Input
-                                      placeholder="Type name or select from existing users"
-                                      value={newTeamName}
-                                      onChange={(e) => {
-                                        setNewTeamName(e.target.value);
-                                        setShowTeamSuggestions(e.target.value.length > 0);
-                                      }}
-                                      onFocus={() => setShowTeamSuggestions(newTeamName.length > 0)}
-                                      className="text-xs h-8 pr-8"
-                                    />
-                                    <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
-                                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                      </svg>
+                                  <div className="grid grid-cols-2 gap-3 mt-2">
+                                    <div>
+                                      <Label className="text-xs text-gray-600">Email</Label>
+                                      <Input
+                                        value={pos.email || ''}
+                                        onChange={(e) => {
+                                          const updatedPositions = [...(item.customTeamPositions || [])];
+                                          updatedPositions[index] = { ...updatedPositions[index], email: e.target.value };
+                                          setLocalEquipment(prev => prev.map(eq =>
+                                            eq.id === item.id
+                                              ? { ...eq, customTeamPositions: updatedPositions }
+                                              : eq
+                                          ));
+                                        }}
+                                        className="text-xs h-8"
+                                        placeholder="Email"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label className="text-xs text-gray-600">Phone</Label>
+                                      <Input
+                                        value={pos.phone || ''}
+                                        onChange={(e) => {
+                                          const updatedPositions = [...(item.customTeamPositions || [])];
+                                          updatedPositions[index] = { ...updatedPositions[index], phone: e.target.value };
+                                          setLocalEquipment(prev => prev.map(eq =>
+                                            eq.id === item.id
+                                              ? { ...eq, customTeamPositions: updatedPositions }
+                                              : eq
+                                          ));
+                                        }}
+                                        className="text-xs h-8"
+                                        placeholder="Phone"
+                                      />
                                     </div>
                                   </div>
-                                  {/* Team Member Suggestions Dropdown */}
-                                  {showTeamSuggestions && availableTeamMembers.length > 0 && (
-                                    <div className="absolute top-full left-0 right-0 z-20 bg-white border border-gray-200 rounded-md shadow-lg max-h-40 overflow-y-auto">
-                                      <div className="px-3 py-2 text-xs font-medium text-gray-500 bg-gray-50 border-b">
-                                        Select from existing users:
-                                      </div>
-                                      {availableTeamMembers
-                                        .filter(member =>
-                                          member.full_name.toLowerCase().includes(newTeamName.toLowerCase()) ||
-                                          member.email.toLowerCase().includes(newTeamName.toLowerCase())
-                                        )
-                                        .slice(0, 5)
-                                        .map((member) => (
-                                          <div
-                                            key={member.id}
-                                            onClick={() => selectTeamMember(member)}
-                                            className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-xs border-b border-gray-100 last:border-b-0"
-                                          >
-                                            <div className="font-medium text-gray-800">{member.full_name}</div>
-                                            <div className="text-gray-500">{member.email} • {member.role}</div>
-                                          </div>
-                                        ))}
-                                      <div className="px-3 py-2 text-xs text-gray-500 bg-gray-50 border-t">
-                                        Or continue typing to add new user
-                                      </div>
-                                    </div>
-                                  )}
                                 </div>
-                              </div>
-                              <div className="grid grid-cols-3 gap-3 mt-3">
-                                <div>
-                                  <Label className="text-xs text-gray-600">Email</Label>
-                                  <Input
-                                    placeholder="Enter email address"
-                                    type="email"
-                                    value={newTeamEmail}
-                                    onChange={(e) => setNewTeamEmail(e.target.value)}
-                                    className="text-xs h-8"
-                                    pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}$"
-                                    title="Please enter a valid email address"
-                                  />
-                                </div>
-                                <div>
-                                  <Label className="text-xs text-gray-600">Phone</Label>
-                                  <Input
-                                    placeholder="Enter phone number"
-                                    type="tel"
-                                    value={newTeamPhone}
-                                    onChange={(e) => setNewTeamPhone(e.target.value)}
-                                    className="text-xs h-8"
-                                    pattern="[0-9]{10}"
-                                    title="Please enter a 10-digit phone number"
-                                    maxLength={10}
-                                  />
-                                </div>
-                                <div>
-                                  <Label className="text-xs text-gray-600">Role</Label>
-                                  <Select
-                                    value={newTeamRole}
-                                    onValueChange={(value: 'editor' | 'viewer') => setNewTeamRole(value)}
-                                  >
-                                    <SelectTrigger className="text-xs h-8">
-                                      <SelectValue placeholder="Select role" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="viewer">Viewer</SelectItem>
-                                      <SelectItem value="editor">Editor</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                              </div>
-                              <Button
-                                size="sm"
-                                onClick={() => addTeamPosition(item.id)}
-                                disabled={!newTeamPosition?.trim() || !newTeamName?.trim()}
-                                className="w-full mt-2 bg-green-600 hover:bg-green-700 text-xs"
-                              >
-                                <Plus size={14} className="mr-2" />
-                                Add Team Position
-                              </Button>
-                            </div>
-
-                            {/* Custom Team Positions List */}
-                            {teamPositions[item.id] && teamPositions[item.id].length > 0 && (
-                              <div className="space-y-2">
-                                <div className="text-xs font-medium text-gray-700">Custom Team Positions:</div>
-                                {teamPositions[item.id].map((pos) => (
-                                  <div key={pos.id} className="flex items-center justify-between p-2 bg-green-50 rounded border border-green-200">
-                                    <div className="flex-1">
-                                      <div className="flex items-center gap-2 mb-1">
-                                        <div className="text-xs font-medium text-green-800">{pos.position}</div>
-                                        <Badge variant={pos.role === 'editor' ? 'default' : 'secondary'} className="text-xs">
-                                          {pos.role}
-                                        </Badge>
-                                      </div>
-                                      <div className="text-xs text-green-700">{pos.name}</div>
-                                      {pos.email && (
-                                        <div className="text-xs text-green-600">{pos.email}</div>
-                                      )}
-                                      {pos.phone && (
-                                        <div className="text-xs text-green-600">{pos.phone}</div>
-                                      )}
-                                    </div>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      onClick={() => removeTeamPosition(item.id, pos.id)}
-                                      className="text-red-600 hover:text-red-700 p-1 h-6 w-6"
-                                    >
-                                      <X size={12} />
-                                    </Button>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          // View Mode - Show empty (team members will be shown in Team Custom Fields section)
-                          null
-                        )}
-
-                        {/* Team Custom Fields Section */}
-                        <div>
-                          <div className="flex flex-row items-center justify-between gap-2 mb-2">
-                            <div className="text-sm font-semibold text-gray-900">Team Custom Fields</div>
-                            <div className="flex gap-2">
-                              {/* Commented out buttons as requested */}
-                              {/* <Button
-                               size="sm"
-                               variant="outline"
-                               onClick={() => {
-                              setShowAddTeamFieldInputs(prev => ({ ...prev, [item.id]: true }));
-                              setNewTeamFieldName('');
-                              setNewTeamFieldValue('');
-                            }}
-                            className="text-xs px-3 py-1 h-7 bg-blue-600 text-white hover:bg-blue-700"
-                          >
-                            <Plus className="w-3 h-3 mr-1" />
-                            Add Custom Field
-                             </Button>
-                             <Button
-                               size="sm"
-                               variant="outline"
-                               onClick={() => {
-                              setIsEditTeamMode(prev => ({ ...prev, [item.id]: !prev[item.id] }));
-                              setShowAddTeamFieldInputs(prev => ({ ...prev, [item.id]: false }));
-                            }}
-                            className="text-xs px-3 py-1 h-7 bg-green-600 text-white hover:bg-green-700"
-                          >
-                            Edit Custom Field
-                             </Button> */}
-
-                              {/* Manage Team button that redirects to user settings */}
-                              <Button
-                                size="sm"
-                                className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm h-7 sm:h-6 px-2 sm:px-3 whitespace-nowrap"
-                                onClick={() => {
-                                  // Navigate to settings tab
-                                  const event = new CustomEvent('navigateToTab', { 
-                                    detail: { tab: 'settings' } 
-                                  });
-                                  window.dispatchEvent(event);
-                                }}
-                              >
-                                <Plus size={12} className="w-3 h-3 mr-1" />
-                                Manage Team
-                              </Button>
-                              {/* <Button
-                               size="sm"
-                               variant="outline"
-                               onClick={() => {
-                              setIsEditTeamMode(prev => ({ ...prev, [item.id]: !prev[item.id] }));
-                              setShowAddTeamFieldInputs(prev => ({ ...prev, [item.id]: false }));
-                            }}
-                            className="text-xs px-3 py-1 h-7 bg-green-600 text-white hover:bg-green-700"
-                          >
-                            <Edit className="w-3 h-3 mr-1" />
-                            {isEditTeamMode[item.id] ? 'Done Editing' : 'Edit Custom Field'}
-                             </Button> */}
-                            </div>
-                          </div>
-
-                          {/* Add Field Inputs */}
-                          {showAddTeamFieldInputs[item.id] && (
-                            <div className="space-y-2 p-3 bg-gray-50 rounded-md border mb-3">
-                              <div className="flex gap-2">
-                                <Input
-                                  placeholder="Field name (e.g., Team Lead)"
-                                  value={newTeamFieldName}
-                                  onChange={(e) => setNewTeamFieldName(e.target.value)}
-                                  className="text-xs h-7"
-                                />
-                                <Select
-                                  value={newTeamFieldValue}
-                                  onValueChange={handleAddNewUser}
-                                >
-                                  <SelectTrigger className="text-xs h-7">
-                                    <SelectValue placeholder="Select user" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {allUsers.map((user) => (
-                                      <SelectItem key={user.id} value={user.name || user.email}>
-                                        {user.name || user.email}
-                                      </SelectItem>
-                                    ))}
-                                    <SelectItem value="add_new_user" className="text-blue-600 font-medium">
-                                      + Add New User
-                                    </SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  onClick={async () => {
-                                    if (newTeamFieldName?.trim()) {
-                                      const newField = { name: newTeamFieldName?.trim(), value: newTeamFieldValue?.trim() };
-
-                                      // Update team custom fields
-                                      const currentTeamFields = (teamCustomFields[item.id] || []);
-                                      const updatedTeamFields = [...currentTeamFields, newField];
-
-                                      // Update local state
-                                      setTeamCustomFields(prev => ({
-                                        ...prev,
-                                        [item.id]: updatedTeamFields
-                                      }));
-
-                                      // Save to database
-                                      try {
-                                        // console.log('💾 Saving team custom field to database:', item.id, updatedTeamFields);
-                                        await updateEquipment(item.id, {
-                                          team_custom_fields: updatedTeamFields
-                                        });
-                                        // console.log('✅ Team custom field saved successfully');
-                                        toast({
-                                          title: "Success",
-                                          description: "Team custom field added successfully",
-                                        });
-                                      } catch (error) {
-                                        console.error('Error saving team custom field:', error);
-                                        toast({
-                                          title: "Error",
-                                          description: "Failed to save team custom field",
-                                          variant: "destructive",
-                                        });
-                                      }
-
-                                      setNewTeamFieldName('');
-                                      setNewTeamFieldValue('');
-                                      setShowAddTeamFieldInputs(prev => ({ ...prev, [item.id]: false }));
-                                    }
-                                  }}
-                                  className="text-xs px-3 py-1 h-6 bg-green-600 text-white hover:bg-green-700"
-                                >
-                                  <Check className="w-3 h-3 mr-1" />
-                                  Save
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setShowAddTeamFieldInputs(prev => ({ ...prev, [item.id]: false }));
-                                    setNewTeamFieldName('');
-                                    setNewTeamFieldValue('');
-                                  }}
-                                  className="text-xs px-3 py-1 h-6"
-                                >
-                                  <X className="w-3 h-3 mr-1" />
-                                  Cancel
-                                </Button>
-                              </div>
+                              ))}
                             </div>
                           )}
 
-                          {/* Display Team Custom Fields + Project Members */}
-                          {(() => {
-                            const teamFields = teamCustomFields[item.id] || [];
-                            
-                            // console.log('🔍 Team tab - projectMembers:', projectMembers);
-                            // console.log('🔍 Team tab - equipment ID:', item.id);
-
-                            // Find team members assigned to this equipment
-                            const assignedMembers = projectMembers.filter(member => {
-                              // console.log('🔍 Checking member:', member.name, 'equipment_assignments:', member.equipment_assignments);
-                              return member.equipment_assignments &&
-                                (member.equipment_assignments.includes(item.id) ||
-                                 member.equipment_assignments.includes("All Equipment"));
-                            });
-                            
-                            // console.log('🔍 Team tab - assignedMembers:', assignedMembers);
-
-                            // Create combined list of custom fields and project members
-                            const allTeamItems = [
-                              // Add project members as team items
-                              ...assignedMembers.map(member => ({
-                                id: `member-${member.id}`,
-                                name: member.position || 'Team Member',
-                                value: member.name,
-                                isProjectMember: true,
-                                memberData: member
-                              })),
-                              // Add custom fields
-                              ...teamFields.map((field, index) => ({
-                                id: `custom-${index}`,
-                                name: field.name,
-                                value: field.value,
-                                isProjectMember: false,
-                                fieldIndex: index
-                              }))
-                            ];
-
-                            return allTeamItems.length > 0 ? (
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[200px] sm:max-h-64 overflow-y-auto pr-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                                {allTeamItems.map((teamItem, index) => (
-                                  <div key={teamItem.id} className="flex items-center justify-between px-4 py-3 bg-white border border-gray-300 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200">
-                                    {isEditTeamMode[item.id] && !teamItem.isProjectMember ? (
-                                      <div className="flex-1 flex gap-2">
-                                        <Input
-                                          value={teamItem.name}
-                                          onChange={async (e) => {
-                                            const updatedFields = [...teamFields];
-                                            updatedFields[(teamItem as any).fieldIndex] = { ...updatedFields[(teamItem as any).fieldIndex], name: e.target.value };
-
-                                            setTeamCustomFields(prev => ({
-                                              ...prev,
-                                              [item.id]: updatedFields
-                                            }));
-
-                                            // Save to database immediately
-                                            try {
-                                              await updateEquipment(item.id, {
-                                                team_custom_fields: updatedFields
-                                              });
-                                              await refreshEquipmentData();
-                                            } catch (error) {
-                                              console.error('Error saving team field name change:', error);
-                                            }
-                                          }}
-                                          className="text-xs h-7"
-                                        />
-                                        <Select
-                                          value={teamItem.value}
-                                          onValueChange={(value) => handleEditAddNewUser(value, (teamItem as any).fieldIndex, teamFields)}
-                                        >
-                                          <SelectTrigger className="text-xs h-7">
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            {allUsers.map((user) => (
-                                              <SelectItem key={user.id} value={user.name || user.email}>
-                                                {user.name || user.email}
-                                              </SelectItem>
-                                            ))}
-                                            <SelectItem value="add_new_user" className="text-blue-600 font-medium">
-                                              + Add New User
-                                            </SelectItem>
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-                                    ) : (
-                                      <span className="text-gray-800 font-medium text-xs sm:text-sm break-words">{teamItem.name}: <span className="text-gray-600 font-normal">{teamItem.value}</span></span>
-                                    )}
-                                    {!teamItem.isProjectMember && (
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={async () => {
-                                          const updatedFields = teamFields.filter((_, i) => i !== (teamItem as any).fieldIndex);
-
-                                          // Update local state
-                                          setTeamCustomFields(prev => ({
-                                            ...prev,
-                                            [item.id]: updatedFields
-                                          }));
-
-                                          // Save to database
-                                          try {
-                                            // console.log('🗑️ Deleting team custom field from database:', item.id, updatedFields);
-                                            await updateEquipment(item.id, {
-                                              team_custom_fields: updatedFields
-                                            });
-                                            // console.log('✅ Team custom field deleted successfully');
-                                            toast({
-                                              title: "Success",
-                                              description: "Team custom field deleted successfully",
-                                            });
-                                          } catch (error) {
-                                            console.error('Error deleting team custom field:', error);
-                                            toast({
-                                              title: "Error",
-                                              description: "Failed to delete team custom field",
-                                              variant: "destructive",
-                                            });
-                                          }
-                                        }}
-                                        className="text-xs p-1 h-6 w-6 hover:bg-red-50 text-red-500 hover:text-red-700 transition-colors duration-200"
-                                      >
-                                        <X className="w-4 h-4" />
-                                      </Button>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="text-center py-8 text-gray-500 text-sm bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                                <div className="flex flex-col items-center gap-2">
-                                  <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
-                                    <Plus className="w-6 h-6 text-gray-400" />
-                                  </div>
-                                  <p>No team members or custom fields added yet.</p>
-                                  <p className="text-xs text-gray-400">Add team members from Settings tab or click "Add Custom Field" to add fields.</p>
-                                </div>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    </TabsContent>
-
-                    <TabsContent value="progress" className="mt-3 sm:mt-4 space-y-2 flex-1 flex flex-col">
-                      <div className="space-y-2 text-xs sm:text-sm flex-1 flex flex-col">
-                        {(editingEquipmentId === item.id || addingProgressEntryForEquipment === item.id || editingProgressEntryForEquipment === item.id) ? (
-                          // Edit Mode - Add/Edit Progress Entries
-                          <div className="space-y-3">
-                            {/* Header */}
-                            <div className="flex items-center justify-between">
-                              <h4 className="text-sm font-medium text-gray-700">
-                                {editingProgressEntryId ? 'Edit Progress Entry' : 'Add Progress Entry'}
-                              </h4>
-                              {(editingProgressEntryId || addingProgressEntryForEquipment === item.id || editingProgressEntryForEquipment === item.id) && (
-                                <button
-                                  onClick={() => {
-                                    setEditingProgressEntryId(null);
-                                    setAddingProgressEntryForEquipment(null);
-                                    setEditingProgressEntryForEquipment(null);
-                                    setNewProgressType('general');
-                                    setNewProgressEntry('');
-                                    setNewProgressImage(null);
-                                    setImageDescription('');
-                                    setIsAddingCustomProgressType(false);
-                                    setCustomProgressTypeName('');
-                                    // Reset audio recording state
-                                    setAudioChunks([]);
-                                    setRecordingDuration(0);
-                                    setIsRecording(false);
-                                  }}
-                                  className="text-xs text-gray-500 hover:text-gray-700"
-                                >
-                                  {editingProgressEntryId ? 'Cancel Edit' : 'Cancel Add'}
-                                </button>
-                              )}
-                            </div>
-
-                            {/* 3 Inputs in a Row */}
-                            <div className="grid grid-cols-3 gap-3">
+                          {/* Add New Team Position */}
+                          <div className="border-t pt-3">
+                            <div className="text-xs font-medium text-gray-700 mb-2">Add New Team Position:</div>
+                            <div className="grid grid-cols-2 gap-3">
                               <div>
-                                <Label className="text-xs text-gray-600">Progress Type</Label>
-                                <Select
-                                  value={newProgressType}
-                                  onValueChange={(value) => {
-                                    if (value === 'add-custom') {
-                                      setIsAddingCustomProgressType(true);
-                                      setNewProgressType('general'); // Temporary default
-                                    } else {
-                                      setIsAddingCustomProgressType(false);
-                                      setCustomProgressTypeName('');
-                                      setNewProgressType(value);
-                                    }
-                                  }}
-                                >
-                                  <SelectTrigger className="text-xs h-8">
-                                    <SelectValue placeholder="Select type" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="welding">Welding</SelectItem>
-                                    <SelectItem value="material">Material</SelectItem>
-                                    <SelectItem value="inspection">Inspection</SelectItem>
-                                    <SelectItem value="assembly">Assembly</SelectItem>
-                                    <SelectItem value="testing">Testing</SelectItem>
-                                    <SelectItem value="general">General</SelectItem>
-                                    <SelectItem value="comment">Comment</SelectItem>
-                                    <SelectItem value="image">Image</SelectItem>
-                                    {customProgressTypes.map((customType) => (
-                                      <SelectItem key={customType} value={customType}>
-                                        {customType}
-                                      </SelectItem>
-                                    ))}
-                                    <SelectItem value="add-custom">+ Add Custom</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                
-                                {/* Custom Progress Type Input */}
-                                {isAddingCustomProgressType && (
-                                  <div className="mt-2 flex items-center space-x-2">
-                                    <Input
-                                      type="text"
-                                      placeholder="Enter custom type name"
-                                      value={customProgressTypeName}
-                                      onChange={(e) => setCustomProgressTypeName(e.target.value)}
-                                      onKeyPress={(e) => {
-                                        if (e.key === 'Enter' && customProgressTypeName.trim()) {
-                                          const trimmedName = customProgressTypeName.trim();
-                                          setNewProgressType(trimmedName);
-                                          setCustomProgressTypes(prev => {
-                                            if (!prev.includes(trimmedName)) {
-                                              return [...prev, trimmedName];
-                                            }
-                                            return prev;
-                                          });
-                                          setIsAddingCustomProgressType(false);
-                                          setCustomProgressTypeName('');
-                                        }
-                                      }}
-                                      className="flex-grow text-xs h-8"
-                                    />
-                                    <Button
-                                      size="sm"
-                                      onClick={() => {
-                                        if (customProgressTypeName.trim()) {
-                                          const trimmedName = customProgressTypeName.trim();
-                                          setNewProgressType(trimmedName);
-                                          setCustomProgressTypes(prev => {
-                                            if (!prev.includes(trimmedName)) {
-                                              return [...prev, trimmedName];
-                                            }
-                                            return prev;
-                                          });
-                                          setIsAddingCustomProgressType(false);
-                                          setCustomProgressTypeName('');
-                                        }
-                                      }}
-                                      disabled={!customProgressTypeName.trim()}
-                                      className="text-xs h-8 px-2"
-                                    >
-                                      Add
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => {
-                                        setIsAddingCustomProgressType(false);
-                                        setCustomProgressTypeName('');
-                                        setNewProgressType('general');
-                                      }}
-                                      className="text-xs h-8 px-2"
-                                    >
-                                      Cancel
-                                    </Button>
+                                <Label className="text-xs text-gray-600">Position</Label>
+                                <Input
+                                  placeholder="e.g., Fabricator, Engineer"
+                                  value={newTeamPosition}
+                                  onChange={(e) => setNewTeamPosition(e.target.value)}
+                                  className="text-xs h-8"
+                                />
+                              </div>
+                              <div className="relative">
+                                <Label className="text-xs text-gray-600">Name</Label>
+                                <div className="relative">
+                                  <Input
+                                    placeholder="Type name or select from existing users"
+                                    value={newTeamName}
+                                    onChange={(e) => {
+                                      setNewTeamName(e.target.value);
+                                      setShowTeamSuggestions(e.target.value.length > 0);
+                                    }}
+                                    onFocus={() => setShowTeamSuggestions(newTeamName.length > 0)}
+                                    className="text-xs h-8 pr-8"
+                                  />
+                                  <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
+                                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                  </div>
+                                </div>
+                                {/* Team Member Suggestions Dropdown */}
+                                {showTeamSuggestions && availableTeamMembers.length > 0 && (
+                                  <div className="absolute top-full left-0 right-0 z-20 bg-white border border-gray-200 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                                    <div className="px-3 py-2 text-xs font-medium text-gray-500 bg-gray-50 border-b">
+                                      Select from existing users:
+                                    </div>
+                                    {availableTeamMembers
+                                      .filter(member =>
+                                        member.full_name.toLowerCase().includes(newTeamName.toLowerCase()) ||
+                                        member.email.toLowerCase().includes(newTeamName.toLowerCase())
+                                      )
+                                      .slice(0, 5)
+                                      .map((member) => (
+                                        <div
+                                          key={member.id}
+                                          onClick={() => selectTeamMember(member)}
+                                          className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-xs border-b border-gray-100 last:border-b-0"
+                                        >
+                                          <div className="font-medium text-gray-800">{member.full_name}</div>
+                                          <div className="text-gray-500">{member.email} • {member.role}</div>
+                                        </div>
+                                      ))}
+                                    <div className="px-3 py-2 text-xs text-gray-500 bg-gray-50 border-t">
+                                      Or continue typing to add new user
+                                    </div>
                                   </div>
                                 )}
                               </div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-3 mt-3">
                               <div>
-                                <Label className="text-xs text-gray-600">Comment</Label>
+                                <Label className="text-xs text-gray-600">Email</Label>
                                 <Input
-                                  placeholder="Enter progress details"
-                                  value={newProgressEntry}
-                                  onChange={(e) => setNewProgressEntry(e.target.value)}
+                                  placeholder="Enter email address"
+                                  type="email"
+                                  value={newTeamEmail}
+                                  onChange={(e) => setNewTeamEmail(e.target.value)}
                                   className="text-xs h-8"
+                                  pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}$"
+                                  title="Please enter a valid email address"
                                 />
                               </div>
-
-                              {/* Audio Recording Section */}
                               <div>
-                                <Label className="text-xs text-gray-600">Voice Message</Label>
-                                <div className="flex items-center gap-2 mt-1">
-                                  {!isRecording ? (
-                                    <button
-                                      onClick={startAudioRecording}
-                                      className="flex items-center gap-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-md border border-blue-200 text-xs font-medium transition-colors"
-                                      title="Start voice recording"
-                                    >
-                                      <Mic className="w-4 h-4" />
-                                      Record Voice
-                                    </button>
-                                  ) : (
-                                    <div className="flex items-center gap-2">
-                                      <button
-                                        onClick={stopAudioRecording}
-                                        className="flex items-center gap-2 px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-md text-xs font-medium transition-colors"
-                                        title="Stop recording"
-                                      >
-                                        <MicOff className="w-4 h-4" />
-                                        Stop Recording
-                                      </button>
-                                      <div className="flex items-center gap-2 px-2 py-1 bg-red-50 rounded-md border border-red-200">
-                                        <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                                        <span className="text-xs text-red-600 font-medium">
-                                          {formatDuration(recordingDuration)}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  )}
-                                  {audioChunks.length > 0 && (
-                                    <div className="flex items-center gap-2 px-2 py-1 bg-green-50 rounded-md border border-green-200">
-                                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                      <span className="text-xs text-green-600 font-medium">
-                                        Voice recorded ({formatDuration(recordingDuration)})
-                                      </span>
-                                    </div>
-                                  )}
-                                </div>
+                                <Label className="text-xs text-gray-600">Phone</Label>
+                                <Input
+                                  placeholder="Enter phone number"
+                                  type="tel"
+                                  value={newTeamPhone}
+                                  onChange={(e) => setNewTeamPhone(e.target.value)}
+                                  className="text-xs h-8"
+                                  pattern="[0-9]{10}"
+                                  title="Please enter a 10-digit phone number"
+                                  maxLength={10}
+                                />
                               </div>
                               <div>
-                                <Label className="text-xs text-gray-600">Image</Label>
-                                <div className="space-y-2">
-                                  {/* Show existing image preview when editing */}
-                                  {editingProgressEntryId && typeof newProgressImage === 'string' && newProgressImage && (
-                                    <div className="relative">
-                                      <img
-                                        src={newProgressImage}
-                                        alt="Existing progress image"
-                                        className="w-24 h-24 object-cover rounded-lg border border-gray-200"
-                                      />
-                                      <button
-                                        onClick={() => setNewProgressImage(null)}
-                                        className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs"
-                                        title="Remove image"
-                                      >
-                                        <X className="w-3 h-3" />
-                                      </button>
-                                      <p className="text-xs text-gray-500 mt-1">Current image (click below to replace)</p>
-                                    </div>
-                                  )}
-                                  <input
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={(e) => {
-                                      const file = e.target.files?.[0];
-                                      if (file) {
-                                        setNewProgressImage(file);
-                                      }
-                                    }}
-                                    className="text-xs h-8 w-full border border-gray-300 rounded px-2"
-                                  />
-                                </div>
+                                <Label className="text-xs text-gray-600">Role</Label>
+                                <Select
+                                  value={newTeamRole}
+                                  onValueChange={(value: 'editor' | 'viewer') => setNewTeamRole(value)}
+                                >
+                                  <SelectTrigger className="text-xs h-8">
+                                    <SelectValue placeholder="Select role" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="viewer">Viewer</SelectItem>
+                                    <SelectItem value="editor">Editor</SelectItem>
+                                  </SelectContent>
+                                </Select>
                               </div>
                             </div>
+                            <Button
+                              size="sm"
+                              onClick={() => addTeamPosition(item.id)}
+                              disabled={!newTeamPosition?.trim() || !newTeamName?.trim()}
+                              className="w-full mt-2 bg-green-600 hover:bg-green-700 text-xs"
+                            >
+                              <Plus size={14} className="mr-2" />
+                              Add Team Position
+                            </Button>
+                          </div>
 
-                            {/* Image Description */}
-                            {(newProgressImage || imageDescription) && (
-                              <div>
-                                <Label className="text-xs text-gray-600">Image Description</Label>
-                                <Input
-                                  placeholder="Describe the image (optional)"
-                                  value={imageDescription}
-                                  onChange={(e) => setImageDescription(e.target.value)}
-                                  className="text-xs h-8"
-                                />
-                              </div>
-                            )}
+                          {/* Custom Team Positions List */}
+                          {teamPositions[item.id] && teamPositions[item.id].length > 0 && (
+                            <div className="space-y-2">
+                              <div className="text-xs font-medium text-gray-700">Custom Team Positions:</div>
+                              {teamPositions[item.id].map((pos) => (
+                                <div key={pos.id} className="flex items-center justify-between p-2 bg-green-50 rounded border border-green-200">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <div className="text-xs font-medium text-green-800">{pos.position}</div>
+                                      <Badge variant={pos.role === 'editor' ? 'default' : 'secondary'} className="text-xs">
+                                        {pos.role}
+                                      </Badge>
+                                    </div>
+                                    <div className="text-xs text-green-700">{pos.name}</div>
+                                    {pos.email && (
+                                      <div className="text-xs text-green-600">{pos.email}</div>
+                                    )}
+                                    {pos.phone && (
+                                      <div className="text-xs text-green-600">{pos.phone}</div>
+                                    )}
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => removeTeamPosition(item.id, pos.id)}
+                                    className="text-red-600 hover:text-red-700 p-1 h-6 w-6"
+                                  >
+                                    <X size={12} />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        // View Mode - Show empty (team members will be shown in Team Custom Fields section)
+                        null
+                      )}
 
-                            {/* Action Buttons */}
+                      {/* Team Custom Fields Section */}
+                      <div>
+                        <div className="flex flex-row items-center justify-between gap-2 mb-2">
+                          <div className="text-sm font-semibold text-gray-900">Team Custom Fields</div>
+                          <div className="flex gap-2">
+                            {/* Commented out buttons as requested */}
+                            {/* <Button
+                             size="sm"
+                             variant="outline"
+                             onClick={() => {
+                            setShowAddTeamFieldInputs(prev => ({ ...prev, [item.id]: true }));
+                            setNewTeamFieldName('');
+                            setNewTeamFieldValue('');
+                          }}
+                          className="text-xs px-3 py-1 h-7 bg-blue-600 text-white hover:bg-blue-700"
+                        >
+                          <Plus className="w-3 h-3 mr-1" />
+                          Add Custom Field
+                           </Button>
+                           <Button
+                             size="sm"
+                             variant="outline"
+                             onClick={() => {
+                            setIsEditTeamMode(prev => ({ ...prev, [item.id]: !prev[item.id] }));
+                            setShowAddTeamFieldInputs(prev => ({ ...prev, [item.id]: false }));
+                          }}
+                          className="text-xs px-3 py-1 h-7 bg-green-600 text-white hover:bg-green-700"
+                        >
+                          Edit Custom Field
+                           </Button> */}
+
+                            {/* Manage Team button that redirects to user settings */}
+                            <Button
+                              size="sm"
+                              className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm h-7 sm:h-6 px-2 sm:px-3 whitespace-nowrap"
+                              onClick={() => {
+                                // Navigate to settings tab
+                                const event = new CustomEvent('navigateToTab', { 
+                                  detail: { tab: 'settings' } 
+                                });
+                                window.dispatchEvent(event);
+                              }}
+                            >
+                              <Plus size={12} className="w-3 h-3 mr-1" />
+                              Manage Team
+                            </Button>
+                            {/* <Button
+                             size="sm"
+                             variant="outline"
+                             onClick={() => {
+                            setIsEditTeamMode(prev => ({ ...prev, [item.id]: !prev[item.id] }));
+                            setShowAddTeamFieldInputs(prev => ({ ...prev, [item.id]: false }));
+                          }}
+                          className="text-xs px-3 py-1 h-7 bg-green-600 text-white hover:bg-green-700"
+                        >
+                          <Edit className="w-3 h-3 mr-1" />
+                          {isEditTeamMode[item.id] ? 'Done Editing' : 'Edit Custom Field'}
+                           </Button> */}
+                          </div>
+                        </div>
+
+                        {/* Add Field Inputs */}
+                        {showAddTeamFieldInputs[item.id] && (
+                          <div className="space-y-2 p-3 bg-gray-50 rounded-md border mb-3">
+                            <div className="flex gap-2">
+                              <Input
+                                placeholder="Field name (e.g., Team Lead)"
+                                value={newTeamFieldName}
+                                onChange={(e) => setNewTeamFieldName(e.target.value)}
+                                className="text-xs h-7"
+                              />
+                              <Select
+                                value={newTeamFieldValue}
+                                onValueChange={handleAddNewUser}
+                              >
+                                <SelectTrigger className="text-xs h-7">
+                                  <SelectValue placeholder="Select user" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {allUsers.map((user) => (
+                                    <SelectItem key={user.id} value={user.name || user.email}>
+                                      {user.name || user.email}
+                                    </SelectItem>
+                                  ))}
+                                  <SelectItem value="add_new_user" className="text-blue-600 font-medium">
+                                    + Add New User
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
                             <div className="flex gap-2">
                               <Button
                                 size="sm"
-                                onClick={() => addProgressEntry(item.id)}
-                                disabled={!newProgressEntry?.trim()}
-                                className="flex-1 bg-blue-600 hover:bg-blue-700 text-xs"
+                                onClick={async () => {
+                                  if (newTeamFieldName?.trim()) {
+                                    const newField = { name: newTeamFieldName?.trim(), value: newTeamFieldValue?.trim() };
+
+                                    // Update team custom fields
+                                    const currentTeamFields = (teamCustomFields[item.id] || []);
+                                    const updatedTeamFields = [...currentTeamFields, newField];
+
+                                    // Update local state
+                                    setTeamCustomFields(prev => ({
+                                      ...prev,
+                                      [item.id]: updatedTeamFields
+                                    }));
+
+                                    // Save to database
+                                    try {
+                                      // console.log('💾 Saving team custom field to database:', item.id, updatedTeamFields);
+                                      await updateEquipment(item.id, {
+                                        team_custom_fields: updatedTeamFields
+                                      });
+                                      // console.log('✅ Team custom field saved successfully');
+                                      toast({
+                                        title: "Success",
+                                        description: "Team custom field added successfully",
+                                      });
+                                    } catch (error) {
+                                      console.error('Error saving team custom field:', error);
+                                      toast({
+                                        title: "Error",
+                                        description: "Failed to save team custom field",
+                                        variant: "destructive",
+                                      });
+                                    }
+
+                                    setNewTeamFieldName('');
+                                    setNewTeamFieldValue('');
+                                    setShowAddTeamFieldInputs(prev => ({ ...prev, [item.id]: false }));
+                                  }
+                                }}
+                                className="text-xs px-3 py-1 h-6 bg-green-600 text-white hover:bg-green-700"
                               >
-                                {editingProgressEntryId ? (
-                                  <>
-                                    <Check size={14} className="mr-2" />
-                                    Update
-                                  </>
-                                ) : (
-                                  <>
-                                    <Plus size={14} className="mr-2" />
-                                    Add
-                                  </>
-                                )}
+                                <Check className="w-3 h-3 mr-1" />
+                                Save
                               </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => {
-                                  setNewProgressType('general');
-                                  setNewProgressEntry('');
-                                  setNewProgressImage(null);
-                                  setImageDescription('');
-                                  setEditingProgressEntryId(null);
-                                  setIsAddingCustomProgressType(false);
-                                  setCustomProgressTypeName('');
-                                  // Reset audio recording state
-                                  setAudioChunks([]);
-                                  setRecordingDuration(0);
-                                  setIsRecording(false);
-                                  // Reset image audio recording state
-                                  setImageAudioChunks([]);
-                                  setImageRecordingDuration(0);
-                                  setIsImageRecording(false);
+                                  setShowAddTeamFieldInputs(prev => ({ ...prev, [item.id]: false }));
+                                  setNewTeamFieldName('');
+                                  setNewTeamFieldValue('');
                                 }}
-                                className="flex-1 bg-white hover:bg-gray-50 border-gray-300 text-gray-700 text-xs"
+                                className="text-xs px-3 py-1 h-6"
                               >
-                                <X size={14} className="mr-2" />
+                                <X className="w-3 h-3 mr-1" />
                                 Cancel
                               </Button>
                             </div>
                           </div>
-                        ) : (
-                          // View Mode - Show Progress Entries
-                          <>
-                            {/* Progress Entries List */}
-                            <div className="flex flex-row items-center justify-between gap-2 mb-2">
-                              <div className="text-sm font-semibold text-gray-900">Progress Entries</div>
-                              <Button
-                                size="sm"
+                        )}
+
+                        {/* Display Team Custom Fields + Project Members */}
+                        {(() => {
+                          const teamFields = teamCustomFields[item.id] || [];
+                          
+                          // console.log('🔍 Team tab - projectMembers:', projectMembers);
+                          // console.log('🔍 Team tab - equipment ID:', item.id);
+
+                          // Find team members assigned to this equipment
+                          const assignedMembers = projectMembers.filter(member => {
+                            // console.log('🔍 Checking member:', member.name, 'equipment_assignments:', member.equipment_assignments);
+                            return member.equipment_assignments &&
+                              (member.equipment_assignments.includes(item.id) ||
+                               member.equipment_assignments.includes("All Equipment"));
+                          });
+                          
+                          // console.log('🔍 Team tab - assignedMembers:', assignedMembers);
+
+                          // Create combined list of custom fields and project members
+                          const allTeamItems = [
+                            // Add project members as team items
+                            ...assignedMembers.map(member => ({
+                              id: `member-${member.id}`,
+                              name: member.position || 'Team Member',
+                              value: member.name,
+                              isProjectMember: true,
+                              memberData: member
+                            })),
+                            // Add custom fields
+                            ...teamFields.map((field, index) => ({
+                              id: `custom-${index}`,
+                              name: field.name,
+                              value: field.value,
+                              isProjectMember: false,
+                              fieldIndex: index
+                            }))
+                          ];
+
+                          return allTeamItems.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[200px] sm:max-h-64 overflow-y-auto pr-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                              {allTeamItems.map((teamItem, index) => (
+                                <div key={teamItem.id} className="flex items-center justify-between px-4 py-3 bg-white border border-gray-300 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200">
+                                  {isEditTeamMode[item.id] && !teamItem.isProjectMember ? (
+                                    <div className="flex-1 flex gap-2">
+                                      <Input
+                                        value={teamItem.name}
+                                        onChange={async (e) => {
+                                          const updatedFields = [...teamFields];
+                                          updatedFields[(teamItem as any).fieldIndex] = { ...updatedFields[(teamItem as any).fieldIndex], name: e.target.value };
+
+                                          setTeamCustomFields(prev => ({
+                                            ...prev,
+                                            [item.id]: updatedFields
+                                          }));
+
+                                          // Save to database immediately
+                                          try {
+                                            await updateEquipment(item.id, {
+                                              team_custom_fields: updatedFields
+                                            });
+                                            await refreshEquipmentData();
+                                          } catch (error) {
+                                            console.error('Error saving team field name change:', error);
+                                          }
+                                        }}
+                                        className="text-xs h-7"
+                                      />
+                                      <Select
+                                        value={teamItem.value}
+                                        onValueChange={(value) => handleEditAddNewUser(value, (teamItem as any).fieldIndex, teamFields)}
+                                      >
+                                        <SelectTrigger className="text-xs h-7">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {allUsers.map((user) => (
+                                            <SelectItem key={user.id} value={user.name || user.email}>
+                                              {user.name || user.email}
+                                            </SelectItem>
+                                          ))}
+                                          <SelectItem value="add_new_user" className="text-blue-600 font-medium">
+                                            + Add New User
+                                          </SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  ) : (
+                                    <span className="text-gray-800 font-medium text-xs sm:text-sm break-words">{teamItem.name}: <span className="text-gray-600 font-normal">{teamItem.value}</span></span>
+                                  )}
+                                  {!teamItem.isProjectMember && (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={async () => {
+                                        const updatedFields = teamFields.filter((_, i) => i !== (teamItem as any).fieldIndex);
+
+                                        // Update local state
+                                        setTeamCustomFields(prev => ({
+                                          ...prev,
+                                          [item.id]: updatedFields
+                                        }));
+
+                                        // Save to database
+                                        try {
+                                          // console.log('🗑️ Deleting team custom field from database:', item.id, updatedFields);
+                                          await updateEquipment(item.id, {
+                                            team_custom_fields: updatedFields
+                                          });
+                                          // console.log('✅ Team custom field deleted successfully');
+                                          toast({
+                                            title: "Success",
+                                            description: "Team custom field deleted successfully",
+                                          });
+                                        } catch (error) {
+                                          console.error('Error deleting team custom field:', error);
+                                          toast({
+                                            title: "Error",
+                                            description: "Failed to delete team custom field",
+                                            variant: "destructive",
+                                          });
+                                        }
+                                      }}
+                                      className="text-xs p-1 h-6 w-6 hover:bg-red-50 text-red-500 hover:text-red-700 transition-colors duration-200"
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </Button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-center py-8 text-gray-500 text-sm bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                              <div className="flex flex-col items-center gap-2">
+                                <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
+                                  <Plus className="w-6 h-6 text-gray-400" />
+                                </div>
+                                <p>No team members or custom fields added yet.</p>
+                                <p className="text-xs text-gray-400">Add team members from Settings tab or click "Add Custom Field" to add fields.</p>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="progress" className="mt-3 sm:mt-4 space-y-2 flex-1 flex flex-col">
+                    <div className="space-y-2 text-xs sm:text-sm flex-1 flex flex-col">
+                      {(editingEquipmentId === item.id || addingProgressEntryForEquipment === item.id || editingProgressEntryForEquipment === item.id) ? (
+                        // Edit Mode - Add/Edit Progress Entries
+                        <div className="space-y-3">
+                          {/* Header */}
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-medium text-gray-700">
+                              {editingProgressEntryId ? 'Edit Progress Entry' : 'Add Progress Entry'}
+                            </h4>
+                            {(editingProgressEntryId || addingProgressEntryForEquipment === item.id || editingProgressEntryForEquipment === item.id) && (
+                              <button
                                 onClick={() => {
-                                  // console.log('➕ Add Entry button clicked for equipment:', item.id);
-                                  setAddingProgressEntryForEquipment(item.id);
+                                  setEditingProgressEntryId(null);
+                                  setAddingProgressEntryForEquipment(null);
+                                  setEditingProgressEntryForEquipment(null);
                                   setNewProgressType('general');
                                   setNewProgressEntry('');
                                   setNewProgressImage(null);
                                   setImageDescription('');
-                                  setEditingProgressEntryId(null);
                                   setIsAddingCustomProgressType(false);
                                   setCustomProgressTypeName('');
                                   // Reset audio recording state
                                   setAudioChunks([]);
                                   setRecordingDuration(0);
                                   setIsRecording(false);
-                                  // Reset image audio recording state
-                                  setImageAudioChunks([]);
-                                  setImageRecordingDuration(0);
-                                  setIsImageRecording(false);
-                                  // console.log('🔄 Form reset for new entry');
                                 }}
-                                className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm h-7 sm:h-6 px-2 sm:px-3 whitespace-nowrap"
+                                className="text-xs text-gray-500 hover:text-gray-700"
                               >
-                                <Plus size={12} className="w-3 h-3 mr-1" />
-                                Add Entry
-                              </Button>
+                                {editingProgressEntryId ? 'Cancel Edit' : 'Cancel Add'}
+                              </button>
+                            )}
+                          </div>
+
+                          {/* 3 Inputs in a Row */}
+                          <div className="grid grid-cols-3 gap-3">
+                            <div>
+                              <Label className="text-xs text-gray-600">Progress Type</Label>
+                              <Select
+                                value={newProgressType}
+                                onValueChange={(value) => {
+                                  if (value === 'add-custom') {
+                                    setIsAddingCustomProgressType(true);
+                                    setNewProgressType('general'); // Temporary default
+                                  } else {
+                                    setIsAddingCustomProgressType(false);
+                                    setCustomProgressTypeName('');
+                                    setNewProgressType(value);
+                                  }
+                                }}
+                              >
+                                <SelectTrigger className="text-xs h-8">
+                                  <SelectValue placeholder="Select type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="welding">Welding</SelectItem>
+                                  <SelectItem value="material">Material</SelectItem>
+                                  <SelectItem value="inspection">Inspection</SelectItem>
+                                  <SelectItem value="assembly">Assembly</SelectItem>
+                                  <SelectItem value="testing">Testing</SelectItem>
+                                  <SelectItem value="general">General</SelectItem>
+                                  <SelectItem value="comment">Comment</SelectItem>
+                                  <SelectItem value="image">Image</SelectItem>
+                                  {customProgressTypes.map((customType) => (
+                                    <SelectItem key={customType} value={customType}>
+                                      {customType}
+                                    </SelectItem>
+                                  ))}
+                                  <SelectItem value="add-custom">+ Add Custom</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              
+                              {/* Custom Progress Type Input */}
+                              {isAddingCustomProgressType && (
+                                <div className="mt-2 flex items-center space-x-2">
+                                  <Input
+                                    type="text"
+                                    placeholder="Enter custom type name"
+                                    value={customProgressTypeName}
+                                    onChange={(e) => setCustomProgressTypeName(e.target.value)}
+                                    onKeyPress={(e) => {
+                                      if (e.key === 'Enter' && customProgressTypeName.trim()) {
+                                        const trimmedName = customProgressTypeName.trim();
+                                        setNewProgressType(trimmedName);
+                                        setCustomProgressTypes(prev => {
+                                          if (!prev.includes(trimmedName)) {
+                                            return [...prev, trimmedName];
+                                          }
+                                          return prev;
+                                        });
+                                        setIsAddingCustomProgressType(false);
+                                        setCustomProgressTypeName('');
+                                      }
+                                    }}
+                                    className="flex-grow text-xs h-8"
+                                  />
+                                  <Button
+                                    size="sm"
+                                    onClick={() => {
+                                      if (customProgressTypeName.trim()) {
+                                        const trimmedName = customProgressTypeName.trim();
+                                        setNewProgressType(trimmedName);
+                                        setCustomProgressTypes(prev => {
+                                          if (!prev.includes(trimmedName)) {
+                                            return [...prev, trimmedName];
+                                          }
+                                          return prev;
+                                        });
+                                        setIsAddingCustomProgressType(false);
+                                        setCustomProgressTypeName('');
+                                      }
+                                    }}
+                                    disabled={!customProgressTypeName.trim()}
+                                    className="text-xs h-8 px-2"
+                                  >
+                                    Add
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setIsAddingCustomProgressType(false);
+                                      setCustomProgressTypeName('');
+                                      setNewProgressType('general');
+                                    }}
+                                    className="text-xs h-8 px-2"
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              )}
                             </div>
-                            <div className="space-y-3 max-h-[280px] sm:max-h-80 overflow-y-auto pr-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                                {/* New Consolidated Progress Entries */}
-                                {item.progressEntries && item.progressEntries.length > 0 ? (
-                                  item.progressEntries.map((entry, index) => (
-                                    <div key={entry.id} className="bg-white rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all p-3 sm:p-4">
-                                      {/* Header: Type Badge */}
-                                      <div className="flex items-start justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
-                                        <span className="inline-flex items-center gap-1.5 px-2 sm:px-3 py-0.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-full border bg-blue-100 text-blue-800 border-blue-200">
-                                          {(entry as any).entry_type || entry.type || 'General'}
-                                        </span>
-                                        
-                                        {/* Right Side: Image + Action Buttons */}
-                                        <div className="flex items-center gap-1.5 sm:gap-2">
-                                          {/* Image Preview - Next to action buttons */}
-                                          {(entry.image || (entry as any).image_url) && (
-                                            <div 
-                                              className="relative group cursor-pointer"
-                                              onClick={() => {
-                                                // Get user name with priority: entry users > uploadedBy > user object > localStorage > email (last resort)
-                                                let userName = (entry as any).users?.full_name || (entry as any).uploadedBy;
-                                                
-                                                if (!userName) {
-                                                  // Try user object
-                                                  userName = (user as any)?.full_name;
-                                                }
-                                                
-                                                if (!userName) {
-                                                  // Try localStorage userData
-                                                  try {
-                                                    const userData = JSON.parse(localStorage.getItem('userData') || '{}');
-                                                    userName = userData?.full_name || userData?.name;
-                                                  } catch (e) {
-                                                    // Ignore parse errors
-                                                  }
-                                                }
-                                                
-                                                if (!userName) {
-                                                  // Try old userName in localStorage
-                                                  userName = localStorage.getItem('userName');
-                                                }
-                                                
-                                                // Email as last resort only
-                                                if (!userName) {
-                                                  userName = user?.email || 'Unknown User';
-                                                }
-                                                
-                                                setShowProgressImageModal({
-                                                  url: entry.image || (entry as any).image_url,
-                                                  description: entry.imageDescription || (entry as any).image_description,
-                                                  uploadedBy: userName,
-                                                  uploadDate: entry.uploadDate || (entry as any).created_at
-                                                });
-                                              }}
-                                              title="Click to view larger image"
-                                            >
-                                              <img
-                                                src={entry.image || (entry as any).image_url}
-                                                alt={`Progress ${index + 1}`}
-                                                className="w-10 h-10 sm:w-12 sm:h-12 object-cover rounded-lg border border-gray-200 shadow-sm transition-all hover:shadow-md hover:border-blue-300"
-                                              />
-                                              {/* Eye Icon Overlay - Visual indicator only */}
-                                              <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-30 rounded-lg transition-all opacity-0 group-hover:opacity-100 pointer-events-none">
-                                                <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
-                                              </div>
-                                            </div>
-                                          )}
-                                          
-                                          {/* Action Buttons */}
-                                          <div className="flex items-center gap-0.5 sm:gap-1">
-                                            <button
-                                              onClick={() => editProgressEntry(item.id, entry.id)}
-                                              className="p-1 sm:p-1.5 hover:bg-blue-50 rounded-md text-blue-600 transition-colors"
-                                              title="Edit entry"
-                                            >
-                                              <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                            </button>
-                                            <button
-                                              onClick={() => {
-                                                if (confirm('Are you sure you want to delete this progress entry?')) {
-                                                  deleteProgressEntry(item.id, entry.id);
-                                                }
-                                              }}
-                                              className="p-1 sm:p-1.5 hover:bg-red-50 rounded-md text-red-600 transition-colors"
-                                              title="Delete entry"
-                                            >
-                                              <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                            </button>
-                                          </div>
-                                        </div>
-                                      </div>
+                            <div>
+                              <Label className="text-xs text-gray-600">Comment</Label>
+                              <Input
+                                placeholder="Enter progress details"
+                                value={newProgressEntry}
+                                onChange={(e) => setNewProgressEntry(e.target.value)}
+                                className="text-xs h-8"
+                              />
+                            </div>
 
-                                      {/* Description */}
-                                      <div className="mb-2 sm:mb-3">
-                                        <p className="text-xs sm:text-sm text-gray-800 leading-relaxed break-words">
-                                          {entry.comment || (entry as any).entry_text || 'No comment'}
-                                        </p>
-                                      </div>
+                            {/* Audio Recording Section */}
+                            <div>
+                              <Label className="text-xs text-gray-600">Voice Message</Label>
+                              <div className="flex items-center gap-2 mt-1">
+                                {!isRecording ? (
+                                  <button
+                                    onClick={startAudioRecording}
+                                    className="flex items-center gap-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-md border border-blue-200 text-xs font-medium transition-colors"
+                                    title="Start voice recording"
+                                  >
+                                    <Mic className="w-4 h-4" />
+                                    Record Voice
+                                  </button>
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={stopAudioRecording}
+                                      className="flex items-center gap-2 px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-md text-xs font-medium transition-colors"
+                                      title="Stop recording"
+                                    >
+                                      <MicOff className="w-4 h-4" />
+                                      Stop Recording
+                                    </button>
+                                    <div className="flex items-center gap-2 px-2 py-1 bg-red-50 rounded-md border border-red-200">
+                                      <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                                      <span className="text-xs text-red-600 font-medium">
+                                        {formatDuration(recordingDuration)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                                {audioChunks.length > 0 && (
+                                  <div className="flex items-center gap-2 px-2 py-1 bg-green-50 rounded-md border border-green-200">
+                                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                    <span className="text-xs text-green-600 font-medium">
+                                      Voice recorded ({formatDuration(recordingDuration)})
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div>
+                              <Label className="text-xs text-gray-600">Image</Label>
+                              <div className="space-y-2">
+                                {/* Show existing image preview when editing */}
+                                {editingProgressEntryId && typeof newProgressImage === 'string' && newProgressImage && (
+                                  <div className="relative">
+                                    <img
+                                      src={newProgressImage}
+                                      alt="Existing progress image"
+                                      className="w-24 h-24 object-cover rounded-lg border border-gray-200"
+                                    />
+                                    <button
+                                      onClick={() => setNewProgressImage(null)}
+                                      className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs"
+                                      title="Remove image"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                    <p className="text-xs text-gray-500 mt-1">Current image (click below to replace)</p>
+                                  </div>
+                                )}
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                      setNewProgressImage(file);
+                                    }
+                                  }}
+                                  className="text-xs h-8 w-full border border-gray-300 rounded px-2"
+                                />
+                              </div>
+                            </div>
+                          </div>
 
-                                      {/* Audio Section - Only if audio exists */}
-                                      {(entry.audio || (entry as any).audio_data) && (
-                                        <div className="mb-2 sm:mb-3 pb-2 sm:pb-3 border-b border-gray-100">
-                                          <div className="flex items-center gap-2 bg-green-50 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-green-200 w-fit">
-                                            <button
-                                              onClick={() => playAudio(entry.audio || (entry as any).audio_data, entry.id)}
-                                              className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 bg-green-500 hover:bg-green-600 rounded-full text-white transition-all hover:shadow-md"
-                                              title={playingAudioId === entry.id ? "Pause audio" : "Play audio"}
-                                            >
-                                              {playingAudioId === entry.id ? (
-                                                <Pause className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                              ) : (
-                                                <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4 ml-0.5" />
-                                              )}
-                                            </button>
-                                            <div className="flex flex-col">
-                                              <span className="text-[10px] sm:text-xs font-semibold text-green-800">
-                                                Voice
-                                              </span>
-                                              <span className="text-[10px] sm:text-xs text-green-600">
-                                                {(entry.audioDuration || (entry as any).audio_duration) ? formatDuration(entry.audioDuration || (entry as any).audio_duration) : '0:00'}
-                                              </span>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      )}
+                          {/* Image Description */}
+                          {(newProgressImage || imageDescription) && (
+                            <div>
+                              <Label className="text-xs text-gray-600">Image Description</Label>
+                              <Input
+                                placeholder="Describe the image (optional)"
+                                value={imageDescription}
+                                onChange={(e) => setImageDescription(e.target.value)}
+                                className="text-xs h-8"
+                              />
+                            </div>
+                          )}
 
-                                      {/* Footer: Metadata */}
-                                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 pt-2 border-t border-gray-100 text-[10px] sm:text-xs text-gray-500">
-                                        <div className="flex items-center gap-1 sm:gap-1.5">
-                                          <User className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                                          <span className="text-blue-600 font-medium truncate">
-                                            {(() => {
+                          {/* Action Buttons */}
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => addProgressEntry(item.id)}
+                              disabled={!newProgressEntry?.trim()}
+                              className="flex-1 bg-blue-600 hover:bg-blue-700 text-xs"
+                            >
+                              {editingProgressEntryId ? (
+                                <>
+                                  <Check size={14} className="mr-2" />
+                                  Update
+                                </>
+                              ) : (
+                                <>
+                                  <Plus size={14} className="mr-2" />
+                                  Add
+                                </>
+                              )}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setNewProgressType('general');
+                                setNewProgressEntry('');
+                                setNewProgressImage(null);
+                                setImageDescription('');
+                                setEditingProgressEntryId(null);
+                                setIsAddingCustomProgressType(false);
+                                setCustomProgressTypeName('');
+                                // Reset audio recording state
+                                setAudioChunks([]);
+                                setRecordingDuration(0);
+                                setIsRecording(false);
+                                // Reset image audio recording state
+                                setImageAudioChunks([]);
+                                setImageRecordingDuration(0);
+                                setIsImageRecording(false);
+                              }}
+                              className="flex-1 bg-white hover:bg-gray-50 border-gray-300 text-gray-700 text-xs"
+                            >
+                              <X size={14} className="mr-2" />
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        // View Mode - Show Progress Entries
+                        <>
+                          {/* Progress Entries List */}
+                          <div className="flex flex-row items-center justify-between gap-2 mb-2">
+                            <div className="text-sm font-semibold text-gray-900">Progress Entries</div>
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                // console.log('➕ Add Entry button clicked for equipment:', item.id);
+                                setAddingProgressEntryForEquipment(item.id);
+                                setNewProgressType('general');
+                                setNewProgressEntry('');
+                                setNewProgressImage(null);
+                                setImageDescription('');
+                                setEditingProgressEntryId(null);
+                                setIsAddingCustomProgressType(false);
+                                setCustomProgressTypeName('');
+                                // Reset audio recording state
+                                setAudioChunks([]);
+                                setRecordingDuration(0);
+                                setIsRecording(false);
+                                // Reset image audio recording state
+                                setImageAudioChunks([]);
+                                setImageRecordingDuration(0);
+                                setIsImageRecording(false);
+                                // console.log('🔄 Form reset for new entry');
+                              }}
+                              className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm h-7 sm:h-6 px-2 sm:px-3 whitespace-nowrap"
+                            >
+                              <Plus size={12} className="w-3 h-3 mr-1" />
+                              Add Entry
+                            </Button>
+                          </div>
+                          <div className="space-y-3 max-h-[280px] sm:max-h-80 overflow-y-auto pr-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                              {/* New Consolidated Progress Entries */}
+                              {item.progressEntries && item.progressEntries.length > 0 ? (
+                                item.progressEntries.map((entry, index) => (
+                                  <div key={entry.id} className="bg-white rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all p-3 sm:p-4">
+                                    {/* Header: Type Badge */}
+                                    <div className="flex items-start justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
+                                      <span className="inline-flex items-center gap-1.5 px-2 sm:px-3 py-0.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-full border bg-blue-100 text-blue-800 border-blue-200">
+                                        {(entry as any).entry_type || entry.type || 'General'}
+                                      </span>
+                                      
+                                      {/* Right Side: Image + Action Buttons */}
+                                      <div className="flex items-center gap-1.5 sm:gap-2">
+                                        {/* Image Preview - Next to action buttons */}
+                                        {(entry.image || (entry as any).image_url) && (
+                                          <div 
+                                            className="relative group cursor-pointer"
+                                            onClick={() => {
                                               // Get user name with priority: entry users > uploadedBy > user object > localStorage > email (last resort)
                                               let userName = (entry as any).users?.full_name || (entry as any).uploadedBy;
                                               
@@ -5623,179 +5450,254 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                                                 userName = user?.email || 'Unknown User';
                                               }
                                               
-                                              return userName;
-                                            })()}
-                                          </span>
-                                        </div>
-                                        <div className="flex items-center gap-1 sm:gap-1.5">
-                                          <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                                          <span>
-                                            {(() => {
-                                              const dateValue = entry.uploadDate || (entry as any).created_at;
-                                              if (!dateValue) return 'Unknown date';
-                                              try {
-                                                const date = new Date(dateValue);
-                                                return date.toLocaleDateString('en-US', { 
-                                                  month: 'short', 
-                                                  day: 'numeric', 
-                                                  year: 'numeric' 
-                                                });
-                                              } catch (error) {
-                                                return 'Invalid date';
+                                              setShowProgressImageModal({
+                                                url: entry.image || (entry as any).image_url,
+                                                description: entry.imageDescription || (entry as any).image_description,
+                                                uploadedBy: userName,
+                                                uploadDate: entry.uploadDate || (entry as any).created_at
+                                              });
+                                            }}
+                                            title="Click to view larger image"
+                                          >
+                                            <img
+                                              src={entry.image || (entry as any).image_url}
+                                              alt={`Progress ${index + 1}`}
+                                              className="w-10 h-10 sm:w-12 sm:h-12 object-cover rounded-lg border border-gray-200 shadow-sm transition-all hover:shadow-md hover:border-blue-300"
+                                            />
+                                            {/* Eye Icon Overlay - Visual indicator only */}
+                                            <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-30 rounded-lg transition-all opacity-0 group-hover:opacity-100 pointer-events-none">
+                                              <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+                                            </div>
+                                          </div>
+                                        )}
+                                        
+                                        {/* Action Buttons */}
+                                        <div className="flex items-center gap-0.5 sm:gap-1">
+                                          <button
+                                            onClick={() => editProgressEntry(item.id, entry.id)}
+                                            className="p-1 sm:p-1.5 hover:bg-blue-50 rounded-md text-blue-600 transition-colors"
+                                            title="Edit entry"
+                                          >
+                                            <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              if (confirm('Are you sure you want to delete this progress entry?')) {
+                                                deleteProgressEntry(item.id, entry.id);
                                               }
-                                            })()}
-                                          </span>
+                                            }}
+                                            className="p-1 sm:p-1.5 hover:bg-red-50 rounded-md text-red-600 transition-colors"
+                                            title="Delete entry"
+                                          >
+                                            <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                          </button>
                                         </div>
                                       </div>
                                     </div>
-                                  ))
-                                ) : (
-                                  <div className="flex flex-col items-center justify-center p-8 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border-2 border-dashed border-gray-300">
-                                    <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mb-3">
-                                      <FileText className="w-6 h-6 text-gray-400" />
+
+                                    {/* Description */}
+                                    <div className="mb-2 sm:mb-3">
+                                      <p className="text-xs sm:text-sm text-gray-800 leading-relaxed break-words">
+                                        {entry.comment || (entry as any).entry_text || 'No comment'}
+                                      </p>
                                     </div>
-                                    <span className="text-sm text-gray-500 font-medium">No progress entries yet</span>
-                                    <span className="text-xs text-gray-400 mt-1">Add your first entry to get started</span>
-                                  </div>
-                                )}
-                              </div>
-                          </>
-                        )}
-                      </div>
-                    </TabsContent>
 
-                    <TabsContent value="documents" className="mt-3 sm:mt-4 space-y-2 flex-1 flex flex-col">
-                      <div className="space-y-2 text-xs sm:text-sm flex-1 flex flex-col">
-                        {editingEquipmentId === item.id ? (
-                          // Edit Mode - Upload Documents
-                          <div className="space-y-3">
-                            <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
-                              <FileText size={24} className="mx-auto text-gray-400 mb-2" />
-                              <div className="text-sm text-gray-600">
-                                Click to upload documents
-                              </div>
-                              <div className="text-xs text-gray-500 mt-1">
-                                PDF, DOC, XLS, DWG, Images supported
-                              </div>
-                            </div>
-
-                            {/* Simple File Input */}
-                            <div className="mt-2">
-                              <input
-                                type="file"
-                                multiple
-                                accept=".pdf,.doc,.docx,.xls,.xlsx,.dwg,.dxf,.jpg,.jpeg,.png"
-                                onChange={(e) => {
-                                  // console.log('🚀 SIMPLE: File input changed!');
-                                  // console.log('🚀 SIMPLE: Files:', e.target.files);
-                                  const files = Array.from(e.target.files || []);
-                                  // console.log('🚀 SIMPLE: Files array:', files);
-                                  if (files.length > 0) {
-                                    // console.log('🚀 SIMPLE: Starting upload...');
-                                    handleDocumentUpload(item.id, files);
-                                  }
-                                }}
-                                className="w-full text-xs"
-                              />
-                            </div>
-
-                            {/* Existing Equipment Documents Display */}
-                            {documents[item.id] && documents[item.id].length > 0 && (
-                              <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-md">
-                                <p className="text-sm font-medium text-green-800 mb-2">Existing Equipment Documents:</p>
-                                <div className="space-y-1">
-                                  {documents[item.id].map((doc) => (
-                                    <div key={doc.id} className="flex items-center justify-between text-sm">
-                                      <div className="flex items-center space-x-2">
-                                        <FileText size={14} className="text-green-600" />
-                                        <span className="text-green-700">{doc.name}</span>
+                                    {/* Audio Section - Only if audio exists */}
+                                    {(entry.audio || (entry as any).audio_data) && (
+                                      <div className="mb-2 sm:mb-3 pb-2 sm:pb-3 border-b border-gray-100">
+                                        <div className="flex items-center gap-2 bg-green-50 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-green-200 w-fit">
+                                          <button
+                                            onClick={() => playAudio(entry.audio || (entry as any).audio_data, entry.id)}
+                                            className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 bg-green-500 hover:bg-green-600 rounded-full text-white transition-all hover:shadow-md"
+                                            title={playingAudioId === entry.id ? "Pause audio" : "Play audio"}
+                                          >
+                                            {playingAudioId === entry.id ? (
+                                              <Pause className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                            ) : (
+                                              <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4 ml-0.5" />
+                                            )}
+                                          </button>
+                                          <div className="flex flex-col">
+                                            <span className="text-[10px] sm:text-xs font-semibold text-green-800">
+                                              Voice
+                                            </span>
+                                            <span className="text-[10px] sm:text-xs text-green-600">
+                                              {(entry.audioDuration || (entry as any).audio_duration) ? formatDuration(entry.audioDuration || (entry as any).audio_duration) : '0:00'}
+                                            </span>
+                                          </div>
+                                        </div>
                                       </div>
-                                      <div className="flex items-center gap-1">
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => handleOpenDocument(doc)}
-                                          className="text-green-600 hover:text-green-800 p-1 h-6 w-6"
-                                        >
-                                          <Eye size={12} />
-                                        </Button>
+                                    )}
 
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => {
-                                            const newName = prompt('Enter document name:', doc.name);
-                                            if (newName && newName.trim()) {
-                                              handleDocumentNameChange(item.id, doc.id, newName.trim());
+                                    {/* Footer: Metadata */}
+                                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 pt-2 border-t border-gray-100 text-[10px] sm:text-xs text-gray-500">
+                                      <div className="flex items-center gap-1 sm:gap-1.5">
+                                        <User className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                                        <span className="text-blue-600 font-medium truncate">
+                                          {(() => {
+                                            // Get user name with priority: entry users > uploadedBy > user object > localStorage > email (last resort)
+                                            let userName = (entry as any).users?.full_name || (entry as any).uploadedBy;
+                                            
+                                            if (!userName) {
+                                              // Try user object
+                                              userName = (user as any)?.full_name;
                                             }
-                                          }}
-                                          className="text-green-600 hover:text-green-800 p-1 h-6 w-6"
-                                        >
-                                          <Edit size={12} />
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => handleDeleteDocument(item.id, doc.id)}
-                                          className="text-red-600 hover:text-red-700 p-1 h-6 w-6"
-                                        >
-                                          <X size={12} />
-                                        </Button>
+                                            
+                                            if (!userName) {
+                                              // Try localStorage userData
+                                              try {
+                                                const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+                                                userName = userData?.full_name || userData?.name;
+                                              } catch (e) {
+                                                // Ignore parse errors
+                                              }
+                                            }
+                                            
+                                            if (!userName) {
+                                              // Try old userName in localStorage
+                                              userName = localStorage.getItem('userName');
+                                            }
+                                            
+                                            // Email as last resort only
+                                            if (!userName) {
+                                              userName = user?.email || 'Unknown User';
+                                            }
+                                            
+                                            return userName;
+                                          })()}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-1 sm:gap-1.5">
+                                        <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                                        <span>
+                                          {(() => {
+                                            const dateValue = entry.uploadDate || (entry as any).created_at;
+                                            if (!dateValue) return 'Unknown date';
+                                            try {
+                                              const date = new Date(dateValue);
+                                              return date.toLocaleDateString('en-US', { 
+                                                month: 'short', 
+                                                day: 'numeric', 
+                                                year: 'numeric' 
+                                              });
+                                            } catch (error) {
+                                              return 'Invalid date';
+                                            }
+                                          })()}
+                                        </span>
                                       </div>
                                     </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Uploaded Documents List */}
-                            <div className="space-y-2">
-                              <div className="text-xs font-medium text-gray-700">Upload New Documents:</div>
-                              <div className="h-36 overflow-y-auto border border-gray-200 rounded bg-gray-50 p-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                                {(() => {
-                                  // console.log('📄 EDIT MODE: Checking documents for equipment:', item.id);
-                                  // console.log('📄 EDIT MODE: Documents state:', documents);
-                                  // console.log('📄 EDIT MODE: Documents for this equipment:', documents[item.id]);
-                                  // console.log('📄 EDIT MODE: Documents length:', documents[item.id]?.length || 0);
-                                  // console.log('📄 EDIT MODE: Documents loading:', documentsLoading[item.id]);
-                                  return null;
-                                })()}
-                                {documentsLoading[item.id] ? (
-                                  <div className="p-4 space-y-3">
-                                    <Skeleton className="h-4 w-full" />
-                                    <Skeleton className="h-4 w-3/4" />
-                                    <Skeleton className="h-4 w-1/2" />
                                   </div>
-                                ) : (
-                                  <div className="text-xs text-gray-500 italic">Upload new documents using the file input above</div>
-                                )}
-                              </div>
+                                ))
+                              ) : (
+                                <div className="flex flex-col items-center justify-center p-8 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border-2 border-dashed border-gray-300">
+                                  <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mb-3">
+                                    <FileText className="w-6 h-6 text-gray-400" />
+                                  </div>
+                                  <span className="text-sm text-gray-500 font-medium">No progress entries yet</span>
+                                  <span className="text-xs text-gray-400 mt-1">Add your first entry to get started</span>
+                                </div>
+                              )}
+                            </div>
+                        </>
+                      )}
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="documents" className="mt-3 sm:mt-4 space-y-2 flex-1 flex flex-col">
+                    <div className="space-y-2 text-xs sm:text-sm flex-1 flex flex-col">
+                      {editingEquipmentId === item.id ? (
+                        // Edit Mode - Upload Documents
+                        <div className="space-y-3">
+                          <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
+                            <FileText size={24} className="mx-auto text-gray-400 mb-2" />
+                            <div className="text-sm text-gray-600">
+                              Click to upload documents
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              PDF, DOC, XLS, DWG, Images supported
                             </div>
                           </div>
-                        ) : (
-                          // View Mode - Show Documents
-                          <>
-                            <div className="flex flex-row items-center justify-between gap-2 mb-2">
-                              <div className="text-sm font-semibold text-gray-900">Equipment Documents</div>
-                              <Button
-                                size="sm"
-                                onClick={() => {
-                                  // console.log('➕ Add Document button clicked for equipment:', item.id);
-                                  setEditingEquipmentId(item.id);
-                                }}
-                                className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm h-7 sm:h-6 px-2 sm:px-3 whitespace-nowrap"
-                              >
-                                <Plus size={12} className="w-3 h-3 mr-1" />
-                                Add Document
-                              </Button>
+
+                          {/* Simple File Input */}
+                          <div className="mt-2">
+                            <input
+                              type="file"
+                              multiple
+                              accept=".pdf,.doc,.docx,.xls,.xlsx,.dwg,.dxf,.jpg,.jpeg,.png"
+                              onChange={(e) => {
+                                // console.log('🚀 SIMPLE: File input changed!');
+                                // console.log('🚀 SIMPLE: Files:', e.target.files);
+                                const files = Array.from(e.target.files || []);
+                                // console.log('🚀 SIMPLE: Files array:', files);
+                                if (files.length > 0) {
+                                  // console.log('🚀 SIMPLE: Starting upload...');
+                                  handleDocumentUpload(item.id, files);
+                                }
+                              }}
+                              className="w-full text-xs"
+                            />
+                          </div>
+
+                          {/* Existing Equipment Documents Display */}
+                          {documents[item.id] && documents[item.id].length > 0 && (
+                            <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-md">
+                              <p className="text-sm font-medium text-green-800 mb-2">Existing Equipment Documents:</p>
+                              <div className="space-y-1">
+                                {documents[item.id].map((doc) => (
+                                  <div key={doc.id} className="flex items-center justify-between text-sm">
+                                    <div className="flex items-center space-x-2">
+                                      <FileText size={14} className="text-green-600" />
+                                      <span className="text-green-700">{doc.name}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => handleOpenDocument(doc)}
+                                        className="text-green-600 hover:text-green-800 p-1 h-6 w-6"
+                                      >
+                                        <Eye size={12} />
+                                      </Button>
+
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => {
+                                          const newName = prompt('Enter document name:', doc.name);
+                                          if (newName && newName.trim()) {
+                                            handleDocumentNameChange(item.id, doc.id, newName.trim());
+                                          }
+                                        }}
+                                        className="text-green-600 hover:text-green-800 p-1 h-6 w-6"
+                                      >
+                                        <Edit size={12} />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => handleDeleteDocument(item.id, doc.id)}
+                                        className="text-red-600 hover:text-red-700 p-1 h-6 w-6"
+                                      >
+                                        <X size={12} />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                            <div className="max-h-[200px] sm:h-36 overflow-y-auto border border-gray-200 rounded bg-gray-50 p-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                          )}
+
+                          {/* Uploaded Documents List */}
+                          <div className="space-y-2">
+                            <div className="text-xs font-medium text-gray-700">Upload New Documents:</div>
+                            <div className="h-36 overflow-y-auto border border-gray-200 rounded bg-gray-50 p-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                               {(() => {
-                                // console.log('📄 PERFECT: Rendering documents for equipment:', item.id);
-                                // console.log('📄 PERFECT: Documents state:', documents);
-                                // console.log('📄 PERFECT: Documents for this equipment:', documents[item.id]);
-                                // console.log('📄 PERFECT: Documents length:', documents[item.id]?.length || 0);
-                                // console.log('📄 PERFECT: Documents loading:', documentsLoading[item.id]);
+                                // console.log('📄 EDIT MODE: Checking documents for equipment:', item.id);
+                                // console.log('📄 EDIT MODE: Documents state:', documents);
+                                // console.log('📄 EDIT MODE: Documents for this equipment:', documents[item.id]);
+                                // console.log('📄 EDIT MODE: Documents length:', documents[item.id]?.length || 0);
+                                // console.log('📄 EDIT MODE: Documents loading:', documentsLoading[item.id]);
                                 return null;
                               })()}
                               {documentsLoading[item.id] ? (
@@ -5804,194 +5706,255 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                                   <Skeleton className="h-4 w-3/4" />
                                   <Skeleton className="h-4 w-1/2" />
                                 </div>
-                              ) : documents[item.id] && documents[item.id].length > 0 ? (
-                                documents[item.id].map((doc) => {
-                                  const getDocumentCategory = (fileName: string) => {
-                                    const ext = fileName.split('.').pop()?.toLowerCase();
-                                    if (['pdf'].includes(ext || '')) return 'PDF';
-                                    if (['dwg', 'dxf'].includes(ext || '')) return 'CAD';
-                                    if (['doc', 'docx'].includes(ext || '')) return 'Document';
-                                    if (['xls', 'xlsx'].includes(ext || '')) return 'Spreadsheet';
-                                    if (['jpg', 'jpeg', 'png', 'gif'].includes(ext || '')) return 'Image';
-                                    return 'Other';
-                                  };
-
-                                  const getCategoryColor = (category: string) => {
-                                    const colors: Record<string, string> = {
-                                      'PDF': 'bg-red-100 text-red-800',
-                                      'CAD': 'bg-blue-100 text-blue-800',
-                                      'Document': 'bg-green-100 text-green-800',
-                                      'Spreadsheet': 'bg-yellow-100 text-yellow-800',
-                                      'Image': 'bg-purple-100 text-purple-800',
-                                      'Other': 'bg-gray-100 text-gray-800'
-                                    };
-                                    return colors[category] || colors['Other'];
-                                  };
-
-                                  const getFileIcon = (fileName: string) => {
-                                    const ext = fileName.split('.').pop()?.toLowerCase();
-                                    if (['pdf'].includes(ext || '')) return '📄';
-                                    if (['dwg', 'dxf'].includes(ext || '')) return '📐';
-                                    if (['doc', 'docx'].includes(ext || '')) return '📝';
-                                    if (['xls', 'xlsx'].includes(ext || '')) return '📊';
-                                    if (['jpg', 'jpeg', 'png', 'gif'].includes(ext || '')) return '🖼️';
-                                    return '📎';
-                                  };
-
-                                  const category = getDocumentCategory(doc.document_name || doc.name);
-                                  const categoryColor = getCategoryColor(category);
-                                  const fileIcon = getFileIcon(doc.document_name || doc.name);
-
-                                  return (
-                                    <div key={doc.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 p-2 sm:p-2 bg-white rounded border border-gray-200 mb-2 last:mb-0 hover:shadow-sm transition-shadow">
-                                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleOpenDocument(doc)}>
-                                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
-                                          <span className="text-sm flex-shrink-0">{fileIcon}</span>
-                                          <span className="text-xs sm:text-sm font-medium text-gray-800 hover:text-gray-900 break-words min-w-0 flex-1">
-                                            {doc.document_name || doc.name}
-                                          </span>
-                                          <span className={`px-1.5 py-0.5 text-[10px] sm:text-xs rounded-full flex-shrink-0 ${categoryColor}`}>
-                                            {category}
-                                          </span>
-                                        </div>
-                                        <div className="text-[10px] sm:text-xs text-gray-500 truncate">
-                                          By: {doc.uploadedBy} • {new Date(doc.uploadDate).toLocaleDateString()}
-                                        </div>
-                                      </div>
-                                      <div className="flex gap-2 sm:gap-1 justify-end sm:justify-start flex-shrink-0">
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          className="h-7 w-7 sm:h-6 sm:w-6 p-0 flex-shrink-0"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleOpenDocument(doc);
-                                          }}
-                                        >
-                                          <Eye size={14} className="sm:w-3 sm:h-3" />
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          className="h-7 w-7 sm:h-6 sm:w-6 p-0 text-red-600 hover:text-red-700 flex-shrink-0"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDeleteDocument(item.id, doc.id);
-                                          }}
-                                        >
-                                          <Trash2 size={14} className="sm:w-3 sm:h-3" />
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  );
-                                })
                               ) : (
-                                <div className="flex items-center justify-center p-4 bg-white rounded border border-gray-200">
-                                  <div className="text-center">
-                                    <FileText size={24} className="text-gray-400 mx-auto mb-2" />
-                                    <span className="text-xs text-gray-500">No documents uploaded</span>
-                                  </div>
-                                </div>
+                                <div className="text-xs text-gray-500 italic">Upload new documents using the file input above</div>
                               )}
                             </div>
+                          </div>
+                        </div>
+                      ) : (
+                        // View Mode - Show Documents
+                        <>
+                          <div className="flex flex-row items-center justify-between gap-2 mb-2">
+                            <div className="text-sm font-semibold text-gray-900">Equipment Documents</div>
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                // console.log('➕ Add Document button clicked for equipment:', item.id);
+                                setEditingEquipmentId(item.id);
+                              }}
+                              className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm h-7 sm:h-6 px-2 sm:px-3 whitespace-nowrap"
+                            >
+                              <Plus size={12} className="w-3 h-3 mr-1" />
+                              Add Document
+                            </Button>
+                          </div>
+                          <div className="max-h-[200px] sm:h-36 overflow-y-auto border border-gray-200 rounded bg-gray-50 p-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                            {(() => {
+                              // console.log('📄 PERFECT: Rendering documents for equipment:', item.id);
+                              // console.log('📄 PERFECT: Documents state:', documents);
+                              // console.log('📄 PERFECT: Documents for this equipment:', documents[item.id]);
+                              // console.log('📄 PERFECT: Documents length:', documents[item.id]?.length || 0);
+                              // console.log('📄 PERFECT: Documents loading:', documentsLoading[item.id]);
+                              return null;
+                            })()}
+                            {documentsLoading[item.id] ? (
+                              <div className="p-4 space-y-3">
+                                <Skeleton className="h-4 w-full" />
+                                <Skeleton className="h-4 w-3/4" />
+                                <Skeleton className="h-4 w-1/2" />
+                              </div>
+                            ) : documents[item.id] && documents[item.id].length > 0 ? (
+                              documents[item.id].map((doc) => {
+                                const getDocumentCategory = (fileName: string) => {
+                                  const ext = fileName.split('.').pop()?.toLowerCase();
+                                  if (['pdf'].includes(ext || '')) return 'PDF';
+                                  if (['dwg', 'dxf'].includes(ext || '')) return 'CAD';
+                                  if (['doc', 'docx'].includes(ext || '')) return 'Document';
+                                  if (['xls', 'xlsx'].includes(ext || '')) return 'Spreadsheet';
+                                  if (['jpg', 'jpeg', 'png', 'gif'].includes(ext || '')) return 'Image';
+                                  return 'Other';
+                                };
+
+                                const getCategoryColor = (category: string) => {
+                                  const colors: Record<string, string> = {
+                                    'PDF': 'bg-red-100 text-red-800',
+                                    'CAD': 'bg-blue-100 text-blue-800',
+                                    'Document': 'bg-green-100 text-green-800',
+                                    'Spreadsheet': 'bg-yellow-100 text-yellow-800',
+                                    'Image': 'bg-purple-100 text-purple-800',
+                                    'Other': 'bg-gray-100 text-gray-800'
+                                  };
+                                  return colors[category] || colors['Other'];
+                                };
+
+                                const getFileIcon = (fileName: string) => {
+                                  const ext = fileName.split('.').pop()?.toLowerCase();
+                                  if (['pdf'].includes(ext || '')) return '📄';
+                                  if (['dwg', 'dxf'].includes(ext || '')) return '📐';
+                                  if (['doc', 'docx'].includes(ext || '')) return '📝';
+                                  if (['xls', 'xlsx'].includes(ext || '')) return '📊';
+                                  if (['jpg', 'jpeg', 'png', 'gif'].includes(ext || '')) return '🖼️';
+                                  return '📎';
+                                };
+
+                                const category = getDocumentCategory(doc.document_name || doc.name);
+                                const categoryColor = getCategoryColor(category);
+                                const fileIcon = getFileIcon(doc.document_name || doc.name);
+
+                                return (
+                                  <div key={doc.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 p-2 sm:p-2 bg-white rounded border border-gray-200 mb-2 last:mb-0 hover:shadow-sm transition-shadow">
+                                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleOpenDocument(doc)}>
+                                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
+                                        <span className="text-sm flex-shrink-0">{fileIcon}</span>
+                                        <span className="text-xs sm:text-sm font-medium text-gray-800 hover:text-gray-900 break-words min-w-0 flex-1">
+                                          {doc.document_name || doc.name}
+                                        </span>
+                                        <span className={`px-1.5 py-0.5 text-[10px] sm:text-xs rounded-full flex-shrink-0 ${categoryColor}`}>
+                                          {category}
+                                        </span>
+                                      </div>
+                                      <div className="text-[10px] sm:text-xs text-gray-500 truncate">
+                                        By: {doc.uploadedBy} • {new Date(doc.uploadDate).toLocaleDateString()}
+                                      </div>
+                                    </div>
+                                    <div className="flex gap-2 sm:gap-1 justify-end sm:justify-start flex-shrink-0">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 w-7 sm:h-6 sm:w-6 p-0 flex-shrink-0"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleOpenDocument(doc);
+                                        }}
+                                      >
+                                        <Eye size={14} className="sm:w-3 sm:h-3" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 w-7 sm:h-6 sm:w-6 p-0 text-red-600 hover:text-red-700 flex-shrink-0"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteDocument(item.id, doc.id);
+                                        }}
+                                      >
+                                        <Trash2 size={14} className="sm:w-3 sm:h-3" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <div className="flex items-center justify-center p-4 bg-white rounded border border-gray-200">
+                                <div className="text-center">
+                                  <FileText size={24} className="text-gray-400 mx-auto mb-2" />
+                                  <span className="text-xs text-gray-500">No documents uploaded</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </TabsContent>
+                </Tabs>
+
+                {/* Action Buttons */}
+                <div className="flex flex-row flex-wrap gap-2 mt-3 mt-auto">
+                  {editingEquipmentId === item.id ? (
+                    // Edit Mode - Show Save/Cancel
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 bg-white hover:bg-gray-50 border-gray-300 hover:border-gray-400 text-gray-700 text-xs sm:text-sm"
+                        onClick={handleCancelEdit}
+                      >
+                        <X size={14} className="mr-1" />
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm"
+                        onClick={handleSaveEquipment}
+                        disabled={loadingStates[`save-${editingEquipmentId}`]}
+                      >
+                        {loadingStates[`save-${editingEquipmentId}`] ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></div>
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Check size={14} className="mr-1" />
+                            Save
                           </>
                         )}
-                      </div>
-                    </TabsContent>
-                  </Tabs>
+                      </Button>
+                    </>
+                  ) : (
+                    // View Mode - Show Edit/Complete/Delete
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 bg-white hover:bg-blue-50 border-blue-200 hover:border-blue-300 text-blue-700 text-xs sm:text-sm"
+                        onClick={() => {
+                          setEditingEquipmentId(item.id);
+                          const formData = {
+                            location: item.location || '',
+                            supervisor: item.supervisor || '',
+                            nextMilestone: item.nextMilestone || '',
+                            size: item.size || '',
+                            weight: item.weight || '',
+                            designCode: item.designCode || '',
+                            material: item.material || '',
+                            workingPressure: item.workingPressure || '',
+                            designTemp: item.designTemp || '',
+                            welder: item.welder || '',
+                            engineer: item.engineer || '',
+                            qcInspector: item.qcInspector || '',
+                            projectManager: item.projectManager || '',
+                            poCdd: item.poCdd || '',
+                            status: item.status || 'on-track',
+                            customFields: item.customFields || [],
+                            certificationTitle: item.certificationTitle || ''
+                          };
+                          // console.log('🔧 Setting editFormData with custom fields:', formData);
+                          setEditFormData(formData);
+                        }}
+                      >
+                        <Edit size={14} className="mr-1" />
+                        Edit
+                      </Button>
 
-                  {/* Action Buttons */}
-                  <div className="flex flex-row flex-wrap gap-2 mt-3 mt-auto">
-                    {editingEquipmentId === item.id ? (
-                      // Edit Mode - Show Save/Cancel
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="flex-1 bg-white hover:bg-gray-50 border-gray-300 hover:border-gray-400 text-gray-700 text-xs sm:text-sm"
-                          onClick={handleCancelEdit}
-                        >
-                          <X size={14} className="mr-1" />
-                          Cancel
-                        </Button>
-                        <Button
-                          size="sm"
-                          className="flex-1 bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm"
-                          onClick={handleSaveEquipment}
-                          disabled={loadingStates[`save-${editingEquipmentId}`]}
-                        >
-                          {loadingStates[`save-${editingEquipmentId}`] ? (
-                            <>
-                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></div>
-                              Saving...
-                            </>
-                          ) : (
-                            <>
-                              <Check size={14} className="mr-1" />
-                              Save
-                            </>
-                          )}
-                        </Button>
-                      </>
-                    ) : (
-                      // View Mode - Show Edit/Complete/Delete
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="flex-1 bg-white hover:bg-blue-50 border-blue-200 hover:border-blue-300 text-blue-700 text-xs sm:text-sm"
-                          onClick={() => handleEditEquipment(item)}
-                        >
-                          <Edit size={14} className="mr-1" />
-                          Edit
-                        </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 bg-white hover:bg-green-50 border-green-200 hover:border-green-300 text-green-700 text-xs sm:text-sm"
+                        onClick={() => handleMarkComplete(item)}
+                        disabled={loadingStates[`complete-${item.id}`]}
+                      >
+                        {loadingStates[`complete-${item.id}`] ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin mr-1"></div>
+                            Completing...
+                          </>
+                        ) : (
+                          <>
+                            <Check size={14} className="mr-1" />
+                            Complete
+                          </>
+                        )}
+                      </Button>
 
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="flex-1 bg-white hover:bg-green-50 border-green-200 hover:border-green-300 text-green-700 text-xs sm:text-sm"
-                          onClick={() => handleMarkComplete(item)}
-                          disabled={loadingStates[`complete-${item.id}`]}
-                        >
-                          {loadingStates[`complete-${item.id}`] ? (
-                            <>
-                              <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin mr-1"></div>
-                              Completing...
-                            </>
-                          ) : (
-                            <>
-                              <Check size={14} className="mr-1" />
-                              Complete
-                            </>
-                          )}
-                        </Button>
-
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="flex-1 bg-white hover:bg-red-50 border-red-200 hover:border-red-300 text-red-700 text-xs sm:text-sm"
-                          onClick={() => handleDeleteEquipment(item)}
-                          disabled={loadingStates[`delete-${item.id}`]}
-                        >
-                          {loadingStates[`delete-${item.id}`] ? (
-                            <>
-                              <div className="w-4 h-4 border-2 border-red-600 border-t-transparent rounded-full animate-spin mr-1"></div>
-                              Deleting...
-                            </>
-                          ) : (
-                            <>
-                              <X size={14} className="mr-1" />
-                              Delete
-                            </>
-                          )}
-                        </Button>
-                      </>
-                    )}
-                  </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 bg-white hover:bg-red-50 border-red-200 hover:border-red-300 text-red-700 text-xs sm:text-sm"
+                        onClick={() => handleDeleteEquipment(item)}
+                        disabled={loadingStates[`delete-${item.id}`]}
+                      >
+                        {loadingStates[`delete-${item.id}`] ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-red-600 border-t-transparent rounded-full animate-spin mr-1"></div>
+                            Deleting...
+                          </>
+                        ) : (
+                          <>
+                            <X size={14} className="mr-1" />
+                            Delete
+                          </>
+                        )}
+                      </Button>
+                    </>
+                  )}
                 </div>
-              </Card>
-            ))}
-        </div>
+              </div>
+            </Card>
+          ))}
+      </div>
       )}
 
       {/* Image Preview Modal */}
