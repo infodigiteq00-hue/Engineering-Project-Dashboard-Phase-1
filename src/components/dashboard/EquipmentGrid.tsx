@@ -191,7 +191,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         console.log('⚡ Using cached team members due to fetch error');
         setTeamMembers(allEquipmentTeamMembers[viewingEquipmentId]);
       } else {
-        setTeamMembers([]);
+      setTeamMembers([]);
       }
     } finally {
       setTeamMembersLoading(false);
@@ -3288,7 +3288,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         if (isStandalone) {
           await deleteStandaloneEquipmentDocument(documentId);
         } else {
-          await deleteEquipmentDocument(documentId);
+        await deleteEquipmentDocument(documentId);
         }
 
         // Log document deletion activity
@@ -3657,11 +3657,48 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
           // 🆕 Priority: Use contact details from form if available, otherwise generate email
           let equipmentManagerEmail = '';
           let equipmentManagerPhone = '';
+          let equipmentManagerRole: 'editor' | 'viewer' = 'editor'; // Default to editor
           
           if (equipmentManagerContacts && equipmentManagerContacts[equipmentManagerName]) {
             // Use email and phone from form
             equipmentManagerEmail = equipmentManagerContacts[equipmentManagerName].email || '';
             equipmentManagerPhone = equipmentManagerContacts[equipmentManagerName].phone || '';
+            
+            // 🆕 Get role from contacts if available (should be 'project_manager' for Equipment Managers)
+            // For database storage, project_manager maps to 'editor' role in standalone_equipment_team_positions
+            // But we'll store it as 'editor' since the table only accepts 'editor' or 'viewer'
+            // The actual role (project_manager) will be fetched from user record when displaying
+            if (equipmentManagerContacts[equipmentManagerName].role === 'project_manager') {
+              equipmentManagerRole = 'editor'; // Project Manager has editor-level access
+            }
+          }
+          
+          // 🆕 Try to fetch role from existing user record if email is available
+          if (equipmentManagerEmail) {
+            try {
+              const firmId = localStorage.getItem('firmId');
+              if (firmId) {
+                const allMembers = await fastAPI.getAllFirmTeamMembers(firmId);
+                const existingMember = allMembers.find((m: any) => 
+                  m.email?.toLowerCase() === equipmentManagerEmail.toLowerCase()
+                );
+                if (existingMember) {
+                  // If they're a project_manager, they should have editor access
+                  if (existingMember.role === 'project_manager' || existingMember.access_level === 'project_manager') {
+                    equipmentManagerRole = 'editor';
+                  } else if (existingMember.role === 'vdcr_manager' || existingMember.access_level === 'vdcr_manager') {
+                    equipmentManagerRole = 'editor';
+                  } else if (existingMember.role === 'editor' || existingMember.access_level === 'editor') {
+                    equipmentManagerRole = 'editor';
+                  } else {
+                    equipmentManagerRole = 'viewer';
+                  }
+                }
+              }
+            } catch (error) {
+              console.error('Error fetching user role (non-fatal):', error);
+              // Continue with default role
+            }
           }
           
           // Fallback: Generate email if not provided in form
@@ -3684,7 +3721,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
               person_name: equipmentManagerName,
               email: equipmentManagerEmail,
               phone: equipmentManagerPhone,
-              role: 'editor' as 'editor' | 'viewer',
+              role: equipmentManagerRole, // Use determined role (editor for project managers)
               assigned_by: user?.id || null
             };
             
@@ -3735,26 +3772,45 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
               }
             }
             
-            // Update allEquipmentTeamMembers state for this equipment (for equipment card team tab)
-            // Helper function for data access (defined later in component, but we'll use inline for safety)
-            const getDataAccessForEditor = () => {
-              return ['Assigned Equipment Only', 'Can Add Progress Images', 'Can Add Progress Entries', 'Access to VDCR & Other Tabs', 'No Access to Settings'];
-            };
+            // 🆕 Determine actual role from user record (project_manager) vs stored role (editor)
+            // The stored role in DB is 'editor' but actual role is 'project_manager'
+            const actualRole = equipmentManagerContacts[equipmentManagerName]?.role === 'project_manager' 
+              ? 'project_manager' 
+              : equipmentManagerRole;
+            
+            // Try to fetch actual role from user record if email is available
+            let finalRole = actualRole;
+            if (equipmentManagerEmail) {
+              try {
+                const firmId = localStorage.getItem('firmId');
+                if (firmId) {
+                  const allMembers = await fastAPI.getAllFirmTeamMembers(firmId);
+                  const existingMember = allMembers.find((m: any) => 
+                    m.email?.toLowerCase() === equipmentManagerEmail.toLowerCase()
+                  );
+                  if (existingMember) {
+                    finalRole = existingMember.role || existingMember.access_level || actualRole;
+                  }
+                }
+              } catch (error) {
+                console.error('Error fetching user role (non-fatal):', error);
+              }
+            }
             
             const transformedMember = {
               id: teamPositionData.equipment_id + '-temp', // Temporary ID, will be updated on refresh
               name: equipmentManagerName,
               email: equipmentManagerEmail,
               phone: equipmentManagerPhone,
-              position: 'Equipment Manager',
-              role: 'editor',
-              permissions: ['view', 'edit', 'manage_equipment'],
+              position: 'Equipment Manager', // Position is dynamic
+              role: finalRole, // Store actual role (project_manager) for display
+              permissions: getPermissionsByRole(finalRole), // Get permissions based on actual role
               status: 'active',
               avatar: equipmentManagerName.split(' ').map((n: string) => n[0]).join('').toUpperCase(),
               lastActive: 'Unknown',
               equipmentAssignments: [equipmentId],
-              dataAccess: getDataAccessForEditor(),
-              accessLevel: 'editor'
+              dataAccess: getDataAccessByRole(finalRole), // Get data access based on actual role
+              accessLevel: finalRole // Store actual role as access level
             };
             
             setAllEquipmentTeamMembers(prev => ({
@@ -3776,21 +3832,43 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                 const teamData = await DatabaseService.getStandaloneTeamPositions(equipmentId);
                 
                 if (teamData && teamData.length > 0) {
-                  const transformedMembers = (teamData as any[]).map((member, index) => ({
-                    id: member.id || `member-${index}`,
-                    name: member.person_name || 'Unknown',
-                    email: member.email || '',
-                    phone: member.phone || '',
-                    position: member.position_name || '',
-                    role: member.role || 'viewer',
-                    permissions: getPermissionsByRole(member.role || 'viewer'),
-                    status: 'active',
-                    avatar: (member.person_name || 'U').split(' ').map((n: string) => n[0]).join('').toUpperCase(),
-                    lastActive: 'Unknown',
-                    equipmentAssignments: [equipmentId],
-                    dataAccess: getDataAccessByRole(member.role || 'viewer'),
-                    accessLevel: member.role || 'viewer'
-                  }));
+                  // 🆕 Fetch actual user roles from company
+                  let userRolesMap: Record<string, string> = {};
+                  try {
+                    const firmId = localStorage.getItem('firmId');
+                    if (firmId) {
+                      const allMembers = await fastAPI.getAllFirmTeamMembers(firmId);
+                      allMembers.forEach((m: any) => {
+                        if (m.email) {
+                          userRolesMap[m.email.toLowerCase()] = m.role || m.access_level || 'viewer';
+                        }
+                      });
+                    }
+                  } catch (error) {
+                    console.error('Error fetching user roles (non-fatal):', error);
+                  }
+                  
+                  const transformedMembers = (teamData as any[]).map((member, index) => {
+                    // 🆕 Get actual role from user record if available
+                    const memberEmail = (member.email || '').toLowerCase();
+                    const actualRole = userRolesMap[memberEmail] || member.role || 'viewer';
+                    
+                    return {
+                      id: member.id || `member-${index}`,
+                      name: member.person_name || 'Unknown',
+                      email: member.email || '',
+                      phone: member.phone || '',
+                      position: member.position_name || '', // Position is dynamic
+                      role: actualRole, // Role is from user record
+                      permissions: getPermissionsByRole(actualRole),
+                      status: 'active',
+                      avatar: (member.person_name || 'U').split(' ').map((n: string) => n[0]).join('').toUpperCase(),
+                      lastActive: 'Unknown',
+                      equipmentAssignments: [equipmentId],
+                      dataAccess: getDataAccessByRole(actualRole),
+                      accessLevel: actualRole
+                    };
+                  });
                   
                   setAllEquipmentTeamMembers(prev => ({
                     ...prev,
@@ -3838,7 +3916,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
       
       try {
         console.log('🔄 Refreshing equipment data to show new equipment on frontend...');
-        await refreshEquipmentData();
+      await refreshEquipmentData();
         console.log('✅ Equipment data refreshed - new equipment should now be visible');
         
         // After equipment data is refreshed, fetch team members for all newly created equipment
@@ -4286,7 +4364,28 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
           'Viewer': 'viewer'
         };
         
-        const dbRole = roleMapping[newMember.role] || 'viewer';
+        // 🆕 Check if this is an existing team member - preserve their role from user record
+        let dbRole = roleMapping[newMember.role] || 'viewer';
+        let actualUserRole = dbRole;
+        
+        try {
+          const firmId = localStorage.getItem('firmId');
+          if (firmId && newMember.email) {
+            const allMembers = await fastAPI.getAllFirmTeamMembers(firmId);
+            const existingMember = allMembers.find((m: any) => 
+              m.email?.toLowerCase() === newMember.email.toLowerCase()
+            );
+            
+            if (existingMember) {
+              // 🆕 Preserve existing user's role from their user record
+              actualUserRole = existingMember.role || existingMember.access_level || dbRole;
+              console.log('✅ Found existing member, preserving role:', actualUserRole);
+            }
+          }
+        } catch (error) {
+          console.error('Error checking existing member (non-fatal):', error);
+          // Continue with selected role
+        }
         
         // For standalone equipment, we'll create equipment team members
         // This assumes there's an equipment_members table or we use team_positions
@@ -4296,31 +4395,45 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
           email: newMember.email,
           phone: newMember.phone || "",
           position: newMember.position,
-          role: dbRole,
+          role: actualUserRole, // Use actual role from user record
           status: "active",
-          permissions: role ? role.permissions : [],
+          permissions: getPermissionsByRole(actualUserRole), // Get permissions based on actual role
           equipment_assignments: [viewingEquipmentId],
-          data_access: newMember.dataAccess || [],
-          access_level: newMember.accessLevel || "viewer",
+          data_access: getDataAccessByRole(actualUserRole), // Get data access based on actual role
+          access_level: actualUserRole, // Use actual role
           avatar: newMember.name.split(' ').map(n => n[0]).join('').toUpperCase(),
           last_active: new Date().toISOString()
         };
 
+        // 🚨 ONLY FOR STANDALONE EQUIPMENT - Do not touch project equipment!
+        if (projectId === 'standalone') {
         // For standalone equipment, use standalone_equipment_team_positions table
+          // 🆕 Map actual role to database role (table only accepts 'editor' or 'viewer')
+          // But we'll store the actual role info separately if needed
+          const dbStoredRole: 'editor' | 'viewer' = 
+            (actualUserRole === 'project_manager' || actualUserRole === 'vdcr_manager' || actualUserRole === 'editor') 
+              ? 'editor' 
+              : 'viewer';
+          
         const teamPositionData = {
           equipment_id: viewingEquipmentId,
-          position_name: newMember.position,
+            position_name: newMember.position, // Dynamic position (Equipment Manager, Supervisor, etc.)
           person_name: newMember.name,
           email: newMember.email,
           phone: newMember.phone || "",
-          role: dbRole === 'project_manager' || dbRole === 'vdcr_manager' || dbRole === 'editor' ? 'editor' : 'viewer'
+            role: dbStoredRole // Store as editor/viewer for DB, but actual role is in user record
         };
 
         console.log('📤 Creating standalone team position with data:', teamPositionData);
-        console.log('🔍 Equipment ID being used:', viewingEquipmentId);
-        console.log('🔍 Equipment ID type:', typeof viewingEquipmentId);
+          console.log('🔍 Equipment ID being used:', viewingEquipmentId);
+          console.log('🔍 Equipment ID type:', typeof viewingEquipmentId);
         const result = await fastAPI.createStandaloneTeamPosition(teamPositionData);
         console.log('✅ Team position created successfully:', result);
+        } else {
+          // For project equipment, use the existing project team member logic (DO NOT MODIFY)
+          // This section should remain untouched for projects
+          console.log('⏭️ Skipping standalone team position creation - this is project equipment');
+        }
         
         // 🆕 Send email invitation to the new team member (only for standalone equipment)
         if (projectId === 'standalone' && newMember.email && newMember.email.trim()) {
@@ -4332,8 +4445,26 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
           // Get equipment name for email
           const equipmentName = viewingEquipment?.name || viewingEquipment?.type || 'Standalone Equipment';
           
-          // Send email notification
+          // 🆕 Create invite for the new team member FIRST (before sending email)
           try {
+            console.log('📧 Creating invite for standalone equipment team member...');
+            await fastAPI.createInvite({
+              email: newMember.email.trim(),
+              full_name: newMember.name,
+              role: dbRole,
+              firm_id: firmId || '',
+              project_id: null, // No project_id for standalone equipment
+              invited_by: currentUserId || 'system'
+            });
+            console.log('✅ Invite created for standalone equipment team member');
+          } catch (inviteError) {
+            console.error('❌ Error creating invite (member still created):', inviteError);
+            // Don't fail the whole operation if invite creation fails
+          }
+          
+          // Send email notification AFTER invite is created
+          try {
+            console.log('📧 Sending email invitation to:', newMember.email.trim());
             const emailResult = await sendProjectTeamEmailNotification({
               project_name: equipmentName,
               team_member_name: newMember.name,
@@ -4353,29 +4484,13 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
             console.error('❌ Error sending email invitation (non-fatal):', emailError);
             // Don't fail the whole operation if email fails
           }
-          
-          // 🆕 Create invite for the new team member
-          try {
-            await fastAPI.createInvite({
-              email: newMember.email.trim(),
-              full_name: newMember.name,
-              role: dbRole,
-              firm_id: firmId || '',
-              project_id: null, // No project_id for standalone equipment
-              invited_by: currentUserId || 'system'
-            });
-            console.log('✅ Invite created for standalone equipment team member');
-          } catch (inviteError) {
-            console.error('❌ Error creating invite (member still created):', inviteError);
-            // Don't fail the whole operation if invite creation fails
-          }
         }
         
         // Small delay to ensure database is updated
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Log activity
-        if (viewingEquipmentId && viewingEquipment) {
+        // Log activity (only for standalone equipment)
+        if (projectId === 'standalone' && viewingEquipmentId && viewingEquipment) {
           try {
             await logTeamMemberAdded(
               null, // No project_id for standalone
@@ -4392,9 +4507,12 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
           }
         }
 
+        // Only refresh team members for standalone equipment
+        if (projectId === 'standalone') {
         console.log('🔄 Refreshing team members list...');
         await fetchEquipmentTeamMembers();
         console.log('✅ Team members list refreshed');
+        }
         
         // Double-check: fetch again after a short delay to ensure we have the latest data
         setTimeout(async () => {
@@ -4482,17 +4600,17 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
       return;
     }
     
-    try {
-      const role = roles.find(r => r.name === newMember.role);
-      
-      const roleMapping: Record<string, string> = {
-        'Project Manager': 'project_manager',
-        'VDCR Manager': 'vdcr_manager', 
-        'Editor': 'editor',
-        'Viewer': 'viewer'
-      };
-      
-      const dbRole = roleMapping[newMember.role] || 'viewer';
+      try {
+        const role = roles.find(r => r.name === newMember.role);
+        
+        const roleMapping: Record<string, string> = {
+          'Project Manager': 'project_manager',
+          'VDCR Manager': 'vdcr_manager', 
+          'Editor': 'editor',
+          'Viewer': 'viewer'
+        };
+        
+        const dbRole = roleMapping[newMember.role] || 'viewer';
       console.log('🔍 Role mapping:', { displayRole: newMember.role, dbRole });
       
       // For standalone equipment, update standalone_equipment_team_positions table
@@ -4552,46 +4670,93 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
           avatar: newMember.name.split(' ').map(n => n[0]).join('').toUpperCase(),
           updated_at: new Date().toISOString()
         };
-        
+
         // Update in project_members table (existing logic)
         await fastAPI.updateProjectMember(selectedMember.id, memberData);
       }
       
       console.log('🔄 Refreshing team members list after update...');
-      await fetchEquipmentTeamMembers();
+        await fetchEquipmentTeamMembers();
       console.log('✅ Team members list refreshed');
-      
+        
       console.log('🔄 Closing edit modal and resetting form...');
-      setShowEditMember(false);
-      setSelectedMember(null);
-      setNewMember({ name: "", email: "", phone: "", position: "", role: "", permissions: [], equipmentAssignments: [], dataAccess: [], accessLevel: "viewer" });
-      
+        setShowEditMember(false);
+        setSelectedMember(null);
+        setNewMember({ name: "", email: "", phone: "", position: "", role: "", permissions: [], equipmentAssignments: [], dataAccess: [], accessLevel: "viewer" });
+        
       console.log('✅ Showing success toast');
-      toast({ title: 'Success', description: 'Team member updated successfully!' });
-    } catch (error) {
+        toast({ title: 'Success', description: 'Team member updated successfully!' });
+      } catch (error) {
       console.error('❌ Error updating team member:', error);
-      toast({ title: 'Error', description: 'Error updating team member. Please try again.', variant: 'destructive' });
+        toast({ title: 'Error', description: 'Error updating team member. Please try again.', variant: 'destructive' });
     }
   };
 
   const removeTeamMember = async (memberId: string) => {
     if (window.confirm("Are you sure you want to remove this team member?")) {
       try {
+        console.log('🗑️ Removing team member:', memberId);
+        
         // For standalone equipment, delete from standalone_equipment_team_positions table
-        if (memberId) {
-          const { error } = await supabase
-            .from('standalone_equipment_team_positions')
-            .delete()
-            .eq('id', memberId);
-          if (error) throw error;
+        if (projectId === 'standalone' && memberId) {
+          console.log('🗑️ Deleting from standalone_equipment_team_positions table');
+          
+          // Use REST API directly to avoid hanging issues with Supabase client
+          const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+          const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+          
+          // Add timeout to prevent hanging
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+          
+          try {
+            const response = await fetch(
+              `${SUPABASE_URL}/rest/v1/standalone_equipment_team_positions?id=eq.${memberId}`,
+              {
+                method: 'DELETE',
+                headers: {
+                  'apikey': SUPABASE_ANON_KEY,
+                  'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                  'Content-Type': 'application/json',
+                  'Prefer': 'return=representation'
+                },
+                signal: controller.signal
+              }
+            );
+            
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error('❌ Error deleting standalone team position:', response.status, errorText);
+              throw new Error(`Failed to remove team member: ${response.status} ${errorText}`);
+            }
+            
+            const deletedData = await response.json();
+            console.log('✅ Team member removed successfully:', deletedData);
+          } catch (fetchError: any) {
+            clearTimeout(timeoutId);
+            if (fetchError.name === 'AbortError') {
+              console.error('❌ Timeout removing team member');
+              throw new Error('Request timed out. Please try again.');
+            }
+            throw fetchError;
+          }
+        } else if (memberId) {
+          // For project equipment, use the existing delete logic
+          console.log('🗑️ Deleting from project_members table');
+          await fastAPI.deleteProjectMember(memberId);
         }
         
+        console.log('🔄 Refreshing team members list...');
         await fetchEquipmentTeamMembers();
+        console.log('✅ Team members list refreshed');
         
         toast({ title: 'Success', description: 'Team member removed successfully!' });
-      } catch (error) {
-        console.error('Error removing team member:', error);
-        toast({ title: 'Error', description: 'Error removing team member. Please try again.', variant: 'destructive' });
+      } catch (error: any) {
+        console.error('❌ Error removing team member:', error);
+        const errorMessage = error?.message || 'Error removing team member. Please try again.';
+        toast({ title: 'Error', description: errorMessage, variant: 'destructive' });
       }
     }
   };
@@ -4866,10 +5031,10 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                           if (displayMembers.length === 0) {
                             const fallbackManager = viewingEquipment.equipmentManager || (viewingEquipment.custom_fields?.find((f: any) => f.name === 'Equipment Manager')?.value);
                             return (
-                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3">
-                                <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">Equipment Manager</span>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 sm:py-3">
+                          <span className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-0">Equipment Manager</span>
                                 <span className="text-xs sm:text-sm font-semibold text-gray-800 break-words">{fallbackManager || 'Not specified'}</span>
-                              </div>
+                        </div>
                             );
                           }
                           
@@ -5600,8 +5765,8 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                           return (
                             <div className="h-full flex items-center justify-center text-gray-500">
                               <div className="text-center">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-2"></div>
-                                <p>Loading equipment logs...</p>
+                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-2"></div>
+                              <p>Loading equipment logs...</p>
                               </div>
                             </div>
                           );
@@ -5611,9 +5776,9 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                           return (
                             <div className="h-full flex items-center justify-center text-gray-500">
                               <div className="text-center">
-                                <Building size={32} className="mx-auto mb-2 text-gray-300" />
-                                <p>No equipment logs match the search criteria.</p>
-                                <p className="text-sm text-gray-400 mt-1">Try adjusting your search terms.</p>
+                              <Building size={32} className="mx-auto mb-2 text-gray-300" />
+                              <p>No equipment logs match the search criteria.</p>
+                              <p className="text-sm text-gray-400 mt-1">Try adjusting your search terms.</p>
                               </div>
                             </div>
                           );
@@ -6001,11 +6166,19 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                               </div>
                             </div>
 
-                            {/* Access Level Badge */}
+                            {/* Role Badge - Shows actual role from user record */}
                             <div className="mt-4 pt-4 border-t border-gray-200">
-                              <h5 className="text-sm font-medium text-gray-700 mb-2">Access Level:</h5>
+                              <h5 className="text-sm font-medium text-gray-700 mb-2">Role:</h5>
                               <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getRoleColor(member.role)} border`}>
-                                {roles.find(r => r.name === member.role)?.displayName || member.role}
+                                {mapRoleToDisplay(member.role)}
+                              </span>
+                            </div>
+                            
+                            {/* Position Badge - Shows dynamic position for this equipment */}
+                            <div className="mt-3 pt-3 border-t border-gray-200">
+                              <h5 className="text-sm font-medium text-gray-700 mb-2">Position:</h5>
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
+                                {member.position || 'No Position'}
                               </span>
                             </div>
 
@@ -6271,14 +6444,14 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                               const dataAccess = getDataAccessByRole(dbRole);
                               
                               return (
-                                <div className="space-y-1">
+                              <div className="space-y-1">
                                   {dataAccess.map((access, index) => (
                                     <div key={index}>• {access}</div>
                                   ))}
-                                </div>
+                              </div>
                               );
                             })()}
-                          </div>
+                              </div>
                         </div>
                       )}
                     </div>
@@ -7070,22 +7243,22 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                           {(() => {
                             const poNumber = item.poNumber || (item as any).po_number || (item.custom_fields?.find((f: any) => f.name === 'PO Number')?.value) || item.poCdd;
                             return poNumber ? (
-                              <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2">
                                 <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
                                 <span className="text-xs font-medium text-gray-600">PO Number:</span>
-                                <div className="text-xs sm:text-sm font-medium text-gray-800 truncate">
+                            <div className="text-xs sm:text-sm font-medium text-gray-800 truncate">
                                   {poNumber}
-                                </div>
-                              </div>
+                            </div>
+                          </div>
                             ) : null;
                           })()}
                           {/* Days Counter / Dispatched Date - Aligned with PO Number */}
                           <div className="flex items-center">
-                            {(() => {
-                              if (item.progressPhase === 'dispatched') {
-                                return (
-                                  <div className="text-left">
-                                    <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Dispatched on</div>
+                          {(() => {
+                            if (item.progressPhase === 'dispatched') {
+                              return (
+                                <div className="text-left">
+                                  <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Dispatched on</div>
                                     <div className="text-xs sm:text-sm font-bold text-green-700 truncate">
                                       {(() => {
                                         // Priority: completionDate (dispatch date) > updated_at > today's date
@@ -7127,41 +7300,33 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                                         });
                                       })()}
                                     </div>
-                                  </div>
-                                );
+                                </div>
+                              );
                               } else if ((item.completionDate && item.completionDate !== 'No deadline set' && item.completionDate !== 'Not specified') || (item.poCdd && item.poCdd !== 'To be scheduled')) {
-                                try {
+                              try {
                                   const deadlineDate = item.completionDate && item.completionDate !== 'No deadline set' && item.completionDate !== 'Not specified'
-                                    ? new Date(item.completionDate) 
-                                    : new Date(item.poCdd);
-                                  const today = new Date();
-                                  const timeDiff = deadlineDate.getTime() - today.getTime();
-                                  const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+                                  ? new Date(item.completionDate) 
+                                  : new Date(item.poCdd);
+                                const today = new Date();
+                                const timeDiff = deadlineDate.getTime() - today.getTime();
+                                const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
 
-                                  if (daysDiff < 0) {
-                                    return (
-                                      <div className="text-left">
-                                        <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Days to Completion</div>
-                                        <div className="text-xs sm:text-sm font-bold text-red-700">{Math.abs(daysDiff)} days overdue</div>
-                                      </div>
-                                    );
-                                  } else {
-                                    return (
-                                      <div className="text-left">
-                                        <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Days to Completion</div>
-                                        <div className="text-xs sm:text-sm font-bold text-blue-700">{daysDiff} days to go</div>
-                                      </div>
-                                    );
-                                  }
-                                } catch (error) {
+                                if (daysDiff < 0) {
                                   return (
                                     <div className="text-left">
                                       <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Days to Completion</div>
-                                      <div className="text-xs sm:text-sm font-bold text-gray-600">No deadline set</div>
+                                      <div className="text-xs sm:text-sm font-bold text-red-700">{Math.abs(daysDiff)} days overdue</div>
+                                    </div>
+                                  );
+                                } else {
+                                  return (
+                                    <div className="text-left">
+                                      <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Days to Completion</div>
+                                      <div className="text-xs sm:text-sm font-bold text-blue-700">{daysDiff} days to go</div>
                                     </div>
                                   );
                                 }
-                              } else {
+                              } catch (error) {
                                 return (
                                   <div className="text-left">
                                     <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Days to Completion</div>
@@ -7169,7 +7334,15 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                                   </div>
                                 );
                               }
-                            })()}
+                            } else {
+                              return (
+                                <div className="text-left">
+                                  <div className="text-[11px] sm:text-xs text-gray-500 font-medium">Days to Completion</div>
+                                  <div className="text-xs sm:text-sm font-bold text-gray-600">No deadline set</div>
+                                </div>
+                              );
+                            }
+                          })()}
                           </div>
                         </div>
                         {/* PO-CDD / Completion Date */}
@@ -7545,9 +7718,9 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                                 const displayValue = overviewLastUpdateRaw[item.id] || 
                                   (localEquipment.find(eq => eq.id === item.id) as any)?.last_update;
                                 return displayValue ? (
-                                  <p className="text-[11px] text-blue-500 mt-1">
+                                <p className="text-[11px] text-blue-500 mt-1">
                                     {formatDateDisplay(String(displayValue).split('T')[0])}
-                                  </p>
+                                </p>
                                 ) : null;
                               })()}
                             </div>
@@ -7567,11 +7740,11 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                                   const raw = e.target.value;
                                   // Only set if it's a valid date format
                                   if (raw && raw.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                                    setOverviewNextMilestoneDate(prev => ({ ...prev, [item.id]: raw }));
-                                    setEditFormData({
-                                      ...editFormData,
-                                      nextMilestoneDate: raw ? new Date(raw).toISOString() : undefined
-                                    });
+                                  setOverviewNextMilestoneDate(prev => ({ ...prev, [item.id]: raw }));
+                                  setEditFormData({
+                                    ...editFormData,
+                                    nextMilestoneDate: raw ? new Date(raw).toISOString() : undefined
+                                  });
                                   } else if (!raw) {
                                     // Clear if empty
                                     setOverviewNextMilestoneDate(prev => {
@@ -8048,7 +8221,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                       </div>
                     </TabsContent>
 
-                    <TabsContent value="team" className="mt-3 sm:mt-4 space-y-2 flex-1 flex flex-col">
+                    <TabsContent value="team" className="mt-1 sm:mt-2 space-y-2 flex-1 flex flex-col">
                       <div className="space-y-2 text-xs sm:text-sm flex-1 flex flex-col">
                         {editingEquipmentId === item.id ? (
                           // Edit Mode
@@ -8320,23 +8493,29 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                              </Button> */}
 
                               {/* Manage Team button that redirects to Settings tab */}
-                              {projectId === 'standalone' && (
                                 <Button
                                   size="sm"
                                   className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm h-7 sm:h-6 px-2 sm:px-3 whitespace-nowrap"
                                   onClick={() => {
-                                    // Navigate to Settings tab in equipment details view
+                                  if (projectId === 'standalone') {
+                                    // For standalone equipment, navigate to Settings tab in equipment details view
                                     setViewingEquipmentId(item.id);
                                     // Use setTimeout to ensure viewingEquipmentId is set first
                                     setTimeout(() => {
                                       setEquipmentDetailsTab('settings');
                                     }, 100);
+                                  } else {
+                                    // For projects, dispatch event to navigate to project Settings tab
+                                    const navigateEvent = new CustomEvent('navigateToTab', {
+                                      detail: { tab: 'settings' }
+                                    });
+                                    window.dispatchEvent(navigateEvent);
+                                  }
                                   }}
                                 >
                                   <Plus size={12} className="w-3 h-3 mr-1" />
                                   Manage Team
                                 </Button>
-                              )}
                               {/* <Button
                                size="sm"
                                variant="outline"
@@ -8506,11 +8685,11 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                             } else {
                               // For project equipment, use projectMembers
                               assignedMembers = projectMembers.filter(member => {
-                                // console.log('🔍 Checking member:', member.name, 'equipment_assignments:', member.equipment_assignments);
-                                return member.equipment_assignments &&
-                                  (member.equipment_assignments.includes(item.id) ||
-                                   member.equipment_assignments.includes("All Equipment"));
-                              });
+                              // console.log('🔍 Checking member:', member.name, 'equipment_assignments:', member.equipment_assignments);
+                              return member.equipment_assignments &&
+                                (member.equipment_assignments.includes(item.id) ||
+                                 member.equipment_assignments.includes("All Equipment"));
+                            });
                             }
                             
                             // console.log('🔍 Team tab - assignedMembers:', assignedMembers);
@@ -8518,10 +8697,15 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                             // Create combined list of custom fields and project members
                             const allTeamItems = [
                               // Add project members as team items
+                              // 🆕 For standalone equipment, show Name - Position format
                               ...assignedMembers.map(member => ({
                                 id: `member-${member.id}`,
-                                name: member.position || 'Team Member',
-                                value: member.name,
+                                name: projectId === 'standalone' 
+                                  ? `${member.name} - ${member.position || 'Team Member'}` // Show "Name - Position" for standalone
+                                  : (member.position || 'Team Member'), // For projects, show position only
+                                value: projectId === 'standalone' 
+                                  ? member.position || 'Team Member' // For standalone, value is just position
+                                  : member.name, // For projects, value is name
                                 isProjectMember: true,
                                 memberData: member
                               })),
@@ -8584,7 +8768,15 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                                         </Select>
                                       </div>
                                     ) : (
-                                      <span className="text-gray-800 font-medium text-xs sm:text-sm break-words">{teamItem.name}: <span className="text-gray-600 font-normal">{teamItem.value}</span></span>
+                                      <span className="text-gray-800 font-medium text-xs sm:text-sm break-words">
+                                        {teamItem.isProjectMember 
+                                          ? (projectId === 'standalone' 
+                                              ? teamItem.name // For standalone: name already contains "Name - Position" format
+                                              : `${teamItem.name}: ${teamItem.value}` // For projects: show "Position: Name" (original format)
+                                            )
+                                          : `${teamItem.name}: ${teamItem.value}` // For custom fields, show "name: value"
+                                        }
+                                      </span>
                                     )}
                                     {!teamItem.isProjectMember && (
                                       <Button
@@ -8643,7 +8835,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                       </div>
                     </TabsContent>
 
-                    <TabsContent value="progress" className="mt-3 sm:mt-4 space-y-2 flex-1 flex flex-col">
+                    <TabsContent value="progress" className="mt-1 sm:mt-2 space-y-2 flex-1 flex flex-col">
                       <div className="space-y-2 text-xs sm:text-sm flex-1 flex flex-col">
                         {(editingEquipmentId === item.id || addingProgressEntryForEquipment === item.id || editingProgressEntryForEquipment === item.id) ? (
                           // Edit Mode - Add/Edit Progress Entries
@@ -9156,7 +9348,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                       </div>
                     </TabsContent>
 
-                    <TabsContent value="documents" className="mt-3 sm:mt-4 space-y-2 flex-1 flex flex-col">
+                    <TabsContent value="documents" className="mt-1 sm:mt-2 space-y-2 flex-1 flex flex-col">
                       <div className="space-y-2 text-xs sm:text-sm flex-1 flex flex-col">
                         {editingEquipmentId === item.id ? (
                           // Edit Mode - Upload Documents

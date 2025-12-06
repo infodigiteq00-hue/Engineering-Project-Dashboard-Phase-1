@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +9,7 @@ import { X, Upload, Users, FileText, Settings, Building2, Plus, CheckCircle, Che
 import { designSystem } from "@/lib/design-system";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { fastAPI } from "@/lib/api";
 
 interface AddStandaloneEquipmentFormNewProps {
   onClose: () => void;
@@ -428,6 +429,22 @@ const AddStandaloneEquipmentFormNew = ({ onClose, onSubmit }: AddStandaloneEquip
                               type="button"
                               onClick={() => {
                                 onChange(option);
+                                
+                                // If this is Equipment Manager field and option is from Project Managers, store role
+                                if (field === 'equipmentManager') {
+                                  const selectedManager = projectManagers.find(pm => pm.name === option);
+                                  if (selectedManager) {
+                                    setEquipmentManagerContacts(prev => ({
+                                      ...prev,
+                                      [option]: {
+                                        email: selectedManager.email || '',
+                                        phone: selectedManager.phone || '',
+                                        role: 'project_manager'
+                                      }
+                                    }));
+                                  }
+                                }
+                                
                                 toggleAccordion(field);
                                 setSearchQueries(prev => ({ ...prev, [field]: '' }));
                               }}
@@ -538,10 +555,10 @@ const AddStandaloneEquipmentFormNew = ({ onClose, onSubmit }: AddStandaloneEquip
                                 [field]: [...(prev[field] || []), name]
                               }));
                               
-                              // Store contact details for future use
+                              // Store contact details for future use with role as project_manager (default for Equipment Manager)
                               setEquipmentManagerContacts(prev => ({
                                 ...prev,
-                                [name]: { email, phone }
+                                [name]: { email, phone, role: 'project_manager' }
                               }));
                               
                               // Update the form data with just the name
