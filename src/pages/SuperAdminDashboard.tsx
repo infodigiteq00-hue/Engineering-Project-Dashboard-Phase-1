@@ -321,27 +321,48 @@ const SuperAdminDashboard = () => {
   const handleUpdateCompany = async () => {
     if (!editingCompany) return;
 
+    // Ensure loading state is always reset, even on early return
     try {
       setUpdatingCompany(true);
-      // Updating company
+      console.log('🔄 Starting company update for:', editingCompany.id);
 
-      // Upload new logo if provided
+      // Upload new logo if provided - with timeout protection
       let logoUrl = editingCompany.logo_url;
       if (editingCompanyLogo) {
         try {
-          logoUrl = await fastAPI.uploadCompanyLogo(editingCompanyLogo, editingCompany.id);
-        } catch (logoError) {
-          console.error('⚠️ Error uploading logo (company still updated):', logoError);
+          console.log('📤 Uploading company logo...');
+          const uploadStartTime = Date.now();
+          
+          // Add timeout wrapper
+          const uploadWithTimeout = Promise.race([
+            fastAPI.uploadCompanyLogo(editingCompanyLogo, editingCompany.id),
+            new Promise<never>((_, reject) => {
+              setTimeout(() => {
+                reject(new Error('Logo upload timed out. Please try again with a smaller file or check your connection.'));
+              }, 35000); // 35 second timeout (slightly longer than API timeout)
+            })
+          ]);
+          
+          logoUrl = await uploadWithTimeout;
+          const uploadTime = Date.now() - uploadStartTime;
+          console.log(`✅ Logo uploaded successfully in ${uploadTime}ms:`, logoUrl);
+        } catch (logoError: any) {
+          console.error('⚠️ Error uploading logo:', logoError);
+          const errorMessage = logoError?.message || 'Logo upload failed. Company will be updated without logo change.';
           toast({ 
             title: 'Warning', 
-            description: 'Company updated successfully, but logo upload failed. You can try again later.', 
-            variant: 'default' 
+            description: errorMessage, 
+            variant: 'default',
+            duration: 5000
           });
+          // Continue with existing logo URL - don't fail the whole update
+          logoUrl = editingCompany.logo_url;
         }
       }
 
-      // Update company in firms table
-      await fastAPI.updateCompany(editingCompany.id, {
+      // Update company in firms table - this should always complete
+      console.log('💾 Updating company data...');
+      const updateData = {
         name: editingCompany.name,
         subscription_plan: editingCompany.subscription_plan,
         is_active: editingCompany.is_active,
@@ -350,29 +371,70 @@ const SuperAdminDashboard = () => {
         admin_email: editingCompany.admin_email,
         admin_phone: editingCompany.admin_phone,
         admin_whatsapp: editingCompany.admin_whatsapp,
-        logo_url: logoUrl
-      });
+        logo_url: logoUrl,
+        updated_at: new Date().toISOString()
+      };
+      
+      try {
+        await fastAPI.updateCompany(editingCompany.id, updateData);
+        console.log('✅ Company data updated successfully');
+      } catch (updateError: any) {
+        console.error('❌ Error updating company data:', updateError);
+        throw new Error(updateError?.response?.data?.message || updateError?.message || 'Failed to update company data');
+      }
 
-      // Update admin user if name or email changed
+      // Update admin user if name or email changed (non-critical)
       if (editingCompany.admin_name || editingCompany.admin_email) {
-        const adminUser = users.find(user => user.firm_id === editingCompany.id && user.role === 'firm_admin');
-        if (adminUser) {
-          await fastAPI.updateUser(adminUser.id, {
-            full_name: editingCompany.admin_name,
-            email: editingCompany.admin_email
-          });
+        try {
+          console.log('👤 Updating admin user...');
+          const adminUser = users.find(user => user.firm_id === editingCompany.id && user.role === 'firm_admin');
+          if (adminUser) {
+            await fastAPI.updateUser(adminUser.id, {
+              full_name: editingCompany.admin_name,
+              email: editingCompany.admin_email
+            });
+            console.log('✅ Admin user updated successfully');
+          }
+        } catch (userError) {
+          console.error('⚠️ Error updating admin user (non-critical):', userError);
+          // Don't fail the whole operation if user update fails
         }
       }
 
+      // Reset form state BEFORE refresh to avoid UI flicker
       setEditingCompany(null);
       setEditingCompanyLogo(null);
       setEditingCompanyLogoPreview(null);
-      await fetchData();
-      toast({ title: 'Success', description: 'Company updated successfully!' });
-    } catch (error) {
-      toast({ title: 'Error', description: 'Error updating company: ' + (error as Error).message, variant: 'destructive' });
+      
+      // Refresh data
+      console.log('🔄 Refreshing company data...');
+      try {
+        await fetchData();
+        console.log('✅ Data refreshed successfully');
+      } catch (refreshError) {
+        console.error('⚠️ Error refreshing data (non-critical):', refreshError);
+        // Don't fail the whole operation if refresh fails
+      }
+      
+      toast({ 
+        title: 'Success', 
+        description: 'Company updated successfully!', 
+        duration: 3000
+      });
+      console.log('✅ Company update completed successfully');
+    } catch (error: any) {
+      console.error('❌ Error updating company:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Unknown error occurred';
+      toast({ 
+        title: 'Error', 
+        description: `Error updating company: ${errorMessage}`, 
+        variant: 'destructive',
+        duration: 5000
+      });
     } finally {
+      // ALWAYS reset loading state, no matter what
       setUpdatingCompany(false);
+      console.log('🏁 Update process finished - loading state reset');
     }
   };
 

@@ -87,6 +87,10 @@ const Index = () => {
   const [userEmail, setUserEmail] = useState<string>('');
   const [loading, setLoading] = useState(true);
   
+  // Firm data state
+  const [firmName, setFirmName] = useState<string>('');
+  const [firmLogo, setFirmLogo] = useState<string | null>(null);
+  
   // PDF Viewer state
   const [currentPDF, setCurrentPDF] = useState<File | null>(null);
   const [pdfTitle, setPdfTitle] = useState<string>('');
@@ -100,7 +104,7 @@ const Index = () => {
   // Load user data from localStorage on component mount
   useEffect(() => {
     // Load and set user data from localStorage
-    const loadUserData = () => {
+    const loadUserData = async () => {
       try {
         
         const userData = JSON.parse(localStorage.getItem('userData') || '{}');
@@ -114,6 +118,20 @@ const Index = () => {
           setUserName('User');
           setUserRole('user');
           setUserEmail('');
+        }
+        
+        // Fetch firm data if firm_id is available
+        if (userData && userData.firm_id) {
+          try {
+            const firmData = await fastAPI.getFirmById(userData.firm_id);
+            if (firmData) {
+              setFirmName(firmData.name || '');
+              setFirmLogo(firmData.logo_url || null);
+            }
+          } catch (error) {
+            console.error('❌ Error fetching firm data:', error);
+            // Continue without firm data
+          }
         }
         
         setLoading(false);
@@ -1468,7 +1486,7 @@ Note: Please download the Recommendation Letter template using the link above, f
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8">
-        <ProjectHeader loading={loading} userName={userName} userRole={userRole} />
+        <ProjectHeader loading={loading} userName={userName} userRole={userRole} firmName={firmName} firmLogo={firmLogo} />
 
         {/* Main Tab Navigation */}
         <div className="mt-6">

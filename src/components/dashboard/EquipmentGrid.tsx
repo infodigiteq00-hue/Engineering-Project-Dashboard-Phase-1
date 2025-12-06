@@ -19,6 +19,7 @@ import { updateEquipment } from "@/lib/database";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { logProgressEntryAdded, logProgressEntryUpdated, logProgressEntryDeleted, logDocumentUploaded, logDocumentDeleted, logProgressImageUploaded, logTeamMemberAdded } from "@/lib/activityLogger";
+import { sendProjectTeamEmailNotification, getDashboardUrl } from "@/lib/notifications";
 import { Equipment, ProgressEntry } from "@/types/equipment";
 import { transformEquipmentData } from "@/utils/equipmentTransform";
 import axios from "axios";
@@ -637,7 +638,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
 
         // Initialize Next Milestone Date
         const nextMilestoneDateValue = equipment.nextMilestoneDate || (equipment as any).next_milestone_date;
-        if (nextMilestoneDateValue) {
+        if (nextMilestoneDateValue && nextMilestoneDateValue !== 'To be scheduled' && nextMilestoneDateValue !== 'Not specified') {
           try {
             const milestoneDate = new Date(nextMilestoneDateValue);
             if (!isNaN(milestoneDate.getTime())) {
@@ -1588,7 +1589,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
     // Convert nextMilestoneDate to date format (YYYY-MM-DD)
     // Try multiple possible field names
     const nextMilestoneDateValue = equipment.nextMilestoneDate || (equipment as any).next_milestone_date;
-    if (nextMilestoneDateValue) {
+    if (nextMilestoneDateValue && nextMilestoneDateValue !== 'To be scheduled' && nextMilestoneDateValue !== 'Not specified') {
       try {
         const milestoneDate = new Date(nextMilestoneDateValue);
         if (!isNaN(milestoneDate.getTime())) {
@@ -1923,7 +1924,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         location: editFormData.location,
         next_milestone: editFormData.nextMilestone,
         next_milestone_date: editFormData.nextMilestoneDate,
-        notes: editFormData.notes,
+        // notes will be set explicitly below if editFormData.notes is defined
         is_basic_info: false,
         // User tracking fields
         updated_by: user?.id, // Add current user as updater
@@ -1990,6 +1991,12 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
       }
       if (editFormData.projectManager && editFormData.projectManager.trim() !== '') {
         equipmentData.project_manager = editFormData.projectManager.trim();
+      }
+
+      // Always include notes field if we're in edit mode (even if empty string)
+      // This ensures the field is updated in the database
+      if (editFormData.notes !== undefined) {
+        equipmentData.notes = String(editFormData.notes || '');
       }
 
       // Remove undefined values
@@ -3416,7 +3423,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
 
   const handleAddStandaloneEquipment = async (formData: any) => {
     try {
-      const { equipmentDetails, ...baseFormData } = formData;
+      const { equipmentDetails, equipmentManagerContacts, ...baseFormData } = formData;
       const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFtbWFvc21rZ3drYW1mamhjeGlrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjYyNzU4NywiZXhwIjoyMDcyMjAzNTg3fQ.PVg3nnfYEBnqpceBXJjnZJIc9lwjmW1G7Lo2U7t0ehk';
       const createdEquipmentIds: string[] = [];
 
@@ -3646,9 +3653,23 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         try {
           // Get equipment manager contact info if available
           const equipmentManagerName = baseFormData.equipmentManager;
-          let equipmentManagerEmail = equipmentManagerName.includes('@') 
-            ? equipmentManagerName 
-            : `${equipmentManagerName.replace(/\s+/g, '.').toLowerCase()}@company.com`;
+          
+          // 🆕 Priority: Use contact details from form if available, otherwise generate email
+          let equipmentManagerEmail = '';
+          let equipmentManagerPhone = '';
+          
+          if (equipmentManagerContacts && equipmentManagerContacts[equipmentManagerName]) {
+            // Use email and phone from form
+            equipmentManagerEmail = equipmentManagerContacts[equipmentManagerName].email || '';
+            equipmentManagerPhone = equipmentManagerContacts[equipmentManagerName].phone || '';
+          }
+          
+          // Fallback: Generate email if not provided in form
+          if (!equipmentManagerEmail || equipmentManagerEmail.trim() === '') {
+            equipmentManagerEmail = equipmentManagerName.includes('@') 
+              ? equipmentManagerName 
+              : `${equipmentManagerName.replace(/\s+/g, '.').toLowerCase()}@company.com`;
+          }
           
           // Ensure email is valid
           if (!equipmentManagerEmail || !equipmentManagerEmail.includes('@')) {
@@ -3662,7 +3683,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
               position_name: 'Equipment Manager',
               person_name: equipmentManagerName,
               email: equipmentManagerEmail,
-              phone: '',
+              phone: equipmentManagerPhone,
               role: 'editor' as 'editor' | 'viewer',
               assigned_by: user?.id || null
             };
@@ -3724,7 +3745,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
               id: teamPositionData.equipment_id + '-temp', // Temporary ID, will be updated on refresh
               name: equipmentManagerName,
               email: equipmentManagerEmail,
-              phone: '',
+              phone: equipmentManagerPhone,
               position: 'Equipment Manager',
               role: 'editor',
               permissions: ['view', 'edit', 'manage_equipment'],
@@ -3884,6 +3905,61 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         }
       }
 
+      // 🆕 Send email invitation to Equipment Manager (only for standalone equipment)
+      if (baseFormData.equipmentManager && equipmentManagerContacts) {
+        const equipmentManagerName = baseFormData.equipmentManager;
+        const equipmentManagerContact = equipmentManagerContacts[equipmentManagerName];
+        
+        if (equipmentManagerContact && equipmentManagerContact.email && equipmentManagerContact.email.trim()) {
+          try {
+            const firmId = localStorage.getItem('firmId');
+            const currentUserId = user?.id || localStorage.getItem('userId');
+            const companyName = localStorage.getItem('companyName') || 'Your Company';
+            
+            // Get equipment name for email (use first created equipment or form data)
+            const equipmentName = createdEquipmentIds.length > 0 
+              ? `Equipment ${createdEquipmentIds[0]}` 
+              : (baseFormData.equipmentType || 'Standalone Equipment');
+            
+            // Send email notification
+            const emailResult = await sendProjectTeamEmailNotification({
+              project_name: equipmentName,
+              team_member_name: equipmentManagerName,
+              team_member_email: equipmentManagerContact.email.trim(),
+              role: 'Equipment Manager',
+              company_name: companyName,
+              dashboard_url: getDashboardUrl('editor'),
+              equipment_name: equipmentName
+            });
+            
+            if (emailResult.success) {
+              console.log('✅ Email invitation sent to Equipment Manager');
+            } else {
+              console.log('⚠️ Email invitation failed:', emailResult.message);
+            }
+          } catch (emailError) {
+            console.error('❌ Error sending email invitation (non-fatal):', emailError);
+            // Don't fail the whole operation if email fails
+          }
+          
+          // 🆕 Create invite for Equipment Manager
+          try {
+            await fastAPI.createInvite({
+              email: equipmentManagerContact.email.trim(),
+              full_name: equipmentManagerName,
+              role: 'editor', // Equipment Manager gets editor role
+              firm_id: firmId || '',
+              project_id: null, // No project_id for standalone equipment
+              invited_by: currentUserId || 'system'
+            });
+            console.log('✅ Invite created for Equipment Manager');
+          } catch (inviteError) {
+            console.error('❌ Error creating invite (equipment still created):', inviteError);
+            // Don't fail the whole operation if invite creation fails
+          }
+        }
+      }
+      
       console.log('✅ All operations completed, closing form and showing success message');
       
       // Close form and show success - do this synchronously to ensure it happens
@@ -4245,6 +4321,55 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
         console.log('🔍 Equipment ID type:', typeof viewingEquipmentId);
         const result = await fastAPI.createStandaloneTeamPosition(teamPositionData);
         console.log('✅ Team position created successfully:', result);
+        
+        // 🆕 Send email invitation to the new team member (only for standalone equipment)
+        if (projectId === 'standalone' && newMember.email && newMember.email.trim()) {
+          // Get company name and IDs from localStorage or user data
+          const firmId = localStorage.getItem('firmId');
+          const currentUserId = user?.id || localStorage.getItem('userId');
+          const companyName = localStorage.getItem('companyName') || 'Your Company';
+          
+          // Get equipment name for email
+          const equipmentName = viewingEquipment?.name || viewingEquipment?.type || 'Standalone Equipment';
+          
+          // Send email notification
+          try {
+            const emailResult = await sendProjectTeamEmailNotification({
+              project_name: equipmentName,
+              team_member_name: newMember.name,
+              team_member_email: newMember.email.trim(),
+              role: newMember.role || dbRole,
+              company_name: companyName,
+              dashboard_url: getDashboardUrl(dbRole),
+              equipment_name: equipmentName
+            });
+            
+            if (emailResult.success) {
+              console.log('✅ Email invitation sent successfully');
+            } else {
+              console.log('⚠️ Email invitation failed:', emailResult.message);
+            }
+          } catch (emailError) {
+            console.error('❌ Error sending email invitation (non-fatal):', emailError);
+            // Don't fail the whole operation if email fails
+          }
+          
+          // 🆕 Create invite for the new team member
+          try {
+            await fastAPI.createInvite({
+              email: newMember.email.trim(),
+              full_name: newMember.name,
+              role: dbRole,
+              firm_id: firmId || '',
+              project_id: null, // No project_id for standalone equipment
+              invited_by: currentUserId || 'system'
+            });
+            console.log('✅ Invite created for standalone equipment team member');
+          } catch (inviteError) {
+            console.error('❌ Error creating invite (member still created):', inviteError);
+            // Don't fail the whole operation if invite creation fails
+          }
+        }
         
         // Small delay to ensure database is updated
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -7394,8 +7519,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                                     }
                                   }
                                   // Priority 2: Fall back to equipment's last_update field from database
-                                  // Note: This fallback ensures the date shows even if overviewLastUpdateRaw isn't set yet
-                                  // The useEffect and handleEditEquipment should set overviewLastUpdateRaw, but this provides a safety net
+                                  // This ensures the date shows even if overviewLastUpdateRaw isn't set yet
                                   const equipment = localEquipment.find(eq => eq.id === item.id);
                                   if (equipment && (equipment as any).last_update) {
                                     const rawDate = String((equipment as any).last_update);
@@ -7408,7 +7532,6 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                                 })()}
                                 onChange={(e) => {
                                   const raw = e.target.value;
-                                  // Store as date only (YYYY-MM-DD)
                                   setOverviewLastUpdateRaw(prev => ({ ...prev, [item.id]: raw }));
                                   setEditFormData({
                                     ...editFormData,
@@ -7423,7 +7546,7 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                                   (localEquipment.find(eq => eq.id === item.id) as any)?.last_update;
                                 return displayValue ? (
                                   <p className="text-[11px] text-blue-500 mt-1">
-                                    {formatDateOnly(String(displayValue).split('T')[0])}
+                                    {formatDateDisplay(String(displayValue).split('T')[0])}
                                   </p>
                                 ) : null;
                               })()}
@@ -7432,19 +7555,40 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                               <Label className="text-xs text-gray-600">Next Milestone Date</Label>
                               <Input
                                 type="date"
-                                value={overviewNextMilestoneDate[item.id] || ''}
+                                value={(() => {
+                                  const dateValue = overviewNextMilestoneDate[item.id];
+                                  // Only return valid date format (YYYY-MM-DD), not strings like "To be scheduled"
+                                  if (dateValue && dateValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                                    return dateValue;
+                                  }
+                                  return '';
+                                })()}
                                 onChange={(e) => {
                                   const raw = e.target.value;
-                                  setOverviewNextMilestoneDate(prev => ({ ...prev, [item.id]: raw }));
-                                  setEditFormData({
-                                    ...editFormData,
-                                    nextMilestoneDate: raw ? new Date(raw).toISOString() : undefined
-                                  });
+                                  // Only set if it's a valid date format
+                                  if (raw && raw.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                                    setOverviewNextMilestoneDate(prev => ({ ...prev, [item.id]: raw }));
+                                    setEditFormData({
+                                      ...editFormData,
+                                      nextMilestoneDate: raw ? new Date(raw).toISOString() : undefined
+                                    });
+                                  } else if (!raw) {
+                                    // Clear if empty
+                                    setOverviewNextMilestoneDate(prev => {
+                                      const updated = { ...prev };
+                                      delete updated[item.id];
+                                      return updated;
+                                    });
+                                    setEditFormData({
+                                      ...editFormData,
+                                      nextMilestoneDate: undefined
+                                    });
+                                  }
                                 }}
                                 className="text-xs h-8"
                               />
                               <p className="text-[11px] text-gray-400 mt-1">Pick the milestone date from the calendar</p>
-                              {overviewNextMilestoneDate[item.id] && (
+                              {overviewNextMilestoneDate[item.id] && overviewNextMilestoneDate[item.id].match(/^\d{4}-\d{2}-\d{2}$/) && (
                                 <p className="text-[11px] text-blue-500 mt-1">
                                   {formatDateDisplay(overviewNextMilestoneDate[item.id])}
                                 </p>
@@ -7485,8 +7629,8 @@ const EquipmentGrid = ({ equipment, projectName, projectId, onBack, onViewDetail
                           const lastUpdatedRaw = (item as any).last_update || item.lastUpdate || latestEntry?.date || latestEntry?.created_at || item.updated_at || (item as any).updatedAt || '';
                           const lastUpdatedValue = lastUpdatedRaw ? formatDateOnly(lastUpdatedRaw) : '—';
                           const updateDescription =
-                            latestEntry?.text || latestEntry?.comment || latestEntry?.entry_text ||
                             (item.notes && item.notes.trim() !== '' ? item.notes : '') ||
+                            latestEntry?.text || latestEntry?.comment || latestEntry?.entry_text ||
                             (item.nextMilestone && item.nextMilestone.trim() !== '' ? item.nextMilestone : '') ||
                             'No recent update details shared yet.';
 

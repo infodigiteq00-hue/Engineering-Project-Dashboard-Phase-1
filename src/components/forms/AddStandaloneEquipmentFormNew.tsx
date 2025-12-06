@@ -149,6 +149,9 @@ const AddStandaloneEquipmentFormNew = ({ onClose, onSubmit }: AddStandaloneEquip
   const [editingEntries, setEditingEntries] = useState<Record<string, { index: number; value: string }>>({});
   const [newEntries, setNewEntries] = useState<Record<string, string>>({});
   const [showAddNew, setShowAddNew] = useState<Record<string, boolean>>({});
+  
+  // Store Equipment Manager contact details (name -> {email, phone})
+  const [equipmentManagerContacts, setEquipmentManagerContacts] = useState<Record<string, { email: string; phone: string }>>({});
 
   const handleInputChange = (field: keyof StandaloneEquipmentFormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -251,7 +254,8 @@ const AddStandaloneEquipmentFormNew = ({ onClose, onSubmit }: AddStandaloneEquip
       // Prepare data with equipmentDetails (multiple units support)
       const submitData = {
         ...formData,
-        equipmentDetails // Include all equipment units
+        equipmentDetails, // Include all equipment units
+        equipmentManagerContacts // Include contact details for email invitation
       };
       
       // Call the onSubmit handler passed from parent component
@@ -490,44 +494,136 @@ const AddStandaloneEquipmentFormNew = ({ onClose, onSubmit }: AddStandaloneEquip
               {/* Add New Form */}
               {showAddNew[field] && (
                 <div className="border-t border-gray-200 p-2 sm:p-4 bg-white">
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <Input
-                      value={newEntries[field] || ''}
-                      onChange={(e) => setNewEntries(prev => ({ ...prev, [field]: e.target.value }))}
-                      placeholder={`Enter new ${label.toLowerCase()}`}
-                      className="flex-1 text-xs sm:text-sm h-8 sm:h-10"
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => {
-                        if (newEntries[field]?.trim()) {
-                          setDynamicOptions(prev => ({ 
-                            ...prev, 
-                            [field]: [...(prev[field] || []), newEntries[field]!] 
-                          }));
-                          setNewEntries(prev => {
-                            const newEntriesCopy = { ...prev };
-                            delete newEntriesCopy[field];
-                            return newEntriesCopy;
-                          });
-                          setShowAddNew(prev => ({ ...prev, [field]: false }));
-                        }
-                      }}
-                      className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm h-8 sm:h-9"
-                    >
-                      Add
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowAddNew(prev => ({ ...prev, [field]: false }))}
-                      className="text-xs sm:text-sm h-8 sm:h-9"
-                    >
-                      Cancel
-                    </Button>
-                  </div>
+                  {field === 'equipmentManager' ? (
+                    // Special form for Equipment Manager with name, email, and phone
+                    <div className="space-y-2 sm:space-y-3">
+                      <Input
+                        value={newEntries[field] || ''}
+                        onChange={(e) => setNewEntries(prev => ({ ...prev, [field]: e.target.value }))}
+                        placeholder="Enter project manager name"
+                        className="w-full text-xs sm:text-sm h-8 sm:h-10"
+                      />
+                      <Input
+                        value={newEntries[`${field}_email`] || ''}
+                        onChange={(e) => setNewEntries(prev => ({ ...prev, [`${field}_email`]: e.target.value }))}
+                        placeholder="Enter email address"
+                        type="email"
+                        className="w-full text-xs sm:text-sm h-8 sm:h-10"
+                        pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}$"
+                        title="Please enter a valid email address"
+                      />
+                      <Input
+                        value={newEntries[`${field}_phone`] || ''}
+                        onChange={(e) => setNewEntries(prev => ({ ...prev, [`${field}_phone`]: e.target.value }))}
+                        placeholder="Enter phone number (10 digits)"
+                        type="tel"
+                        className="w-full text-xs sm:text-sm h-8 sm:h-10"
+                        pattern="[0-9]{10}"
+                        title="Please enter a 10-digit phone number"
+                        maxLength={10}
+                      />
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => {
+                            const name = newEntries[field]?.trim();
+                            const email = newEntries[`${field}_email`]?.trim() || '';
+                            const phone = newEntries[`${field}_phone`]?.trim() || '';
+                            
+                            if (name) {
+                              // Store the name in the visible options (for display)
+                              setDynamicOptions(prev => ({
+                                ...prev,
+                                [field]: [...(prev[field] || []), name]
+                              }));
+                              
+                              // Store contact details for future use
+                              setEquipmentManagerContacts(prev => ({
+                                ...prev,
+                                [name]: { email, phone }
+                              }));
+                              
+                              // Update the form data with just the name
+                              handleInputChange('equipmentManager' as keyof StandaloneEquipmentFormData, name);
+                              
+                              // Close the form and clear all fields
+                              setShowAddNew(prev => ({ ...prev, [field]: false }));
+                              setNewEntries(prev => ({ 
+                                ...prev, 
+                                [field]: '',
+                                [`${field}_email`]: '',
+                                [`${field}_phone`]: ''
+                              }));
+                            }
+                          }}
+                          className="bg-blue-600 hover:bg-blue-700 flex-1 text-xs sm:text-sm h-8 sm:h-9"
+                          disabled={!newEntries[field]?.trim() ||
+                                   (newEntries[`${field}_email`] && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEntries[`${field}_email`])) ||
+                                   (newEntries[`${field}_phone`] && !/^[0-9]{10}$/.test(newEntries[`${field}_phone`]))}
+                        >
+                          Add Equipment Manager
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setShowAddNew(prev => ({ ...prev, [field]: false }));
+                            setNewEntries(prev => ({ 
+                              ...prev, 
+                              [field]: '',
+                              [`${field}_email`]: '',
+                              [`${field}_phone`]: ''
+                            }));
+                          }}
+                          className="text-xs sm:text-sm h-8 sm:h-9"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    // Standard form for other fields
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Input
+                        value={newEntries[field] || ''}
+                        onChange={(e) => setNewEntries(prev => ({ ...prev, [field]: e.target.value }))}
+                        placeholder={`Enter new ${label.toLowerCase()}`}
+                        className="flex-1 text-xs sm:text-sm h-8 sm:h-10"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          if (newEntries[field]?.trim()) {
+                            setDynamicOptions(prev => ({ 
+                              ...prev, 
+                              [field]: [...(prev[field] || []), newEntries[field]!] 
+                            }));
+                            setNewEntries(prev => {
+                              const newEntriesCopy = { ...prev };
+                              delete newEntriesCopy[field];
+                              return newEntriesCopy;
+                            });
+                            setShowAddNew(prev => ({ ...prev, [field]: false }));
+                          }
+                        }}
+                        className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm h-8 sm:h-9"
+                      >
+                        Add
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowAddNew(prev => ({ ...prev, [field]: false }))}
+                        className="text-xs sm:text-sm h-8 sm:h-9"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

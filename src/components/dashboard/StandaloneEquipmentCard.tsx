@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -971,10 +971,10 @@ const StandaloneEquipmentCard: React.FC<StandaloneEquipmentCardProps> = (props) 
                             lastUpdatedValue = formatDateForDisplay(fallbackDate);
                           }
                           const updateDescription =
-                            latestEntry?.text || latestEntry?.comment || latestEntry?.entry_text ||
-                            (item.notes && item.notes.trim() !== '' ? item.notes : '') ||
-                            (item.nextMilestone && item.nextMilestone.trim() !== '' ? item.nextMilestone : '') ||
-                            'No recent update details shared yet.';
+  (item.notes && item.notes.trim() !== '' ? item.notes : '') ||
+  latestEntry?.text || latestEntry?.comment || latestEntry?.entry_text ||
+  (item.nextMilestone && item.nextMilestone.trim() !== '' ? item.nextMilestone : '') ||
+  'No recent update details shared yet.';
 
                           return (
                             <>

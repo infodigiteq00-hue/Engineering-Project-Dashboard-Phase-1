@@ -30,6 +30,20 @@ export const fastAPI = {
     }
   },
 
+  // Fetch firm by ID
+  async getFirmById(firmId: string) {
+    try {
+      const response = await api.get(`/firms?id=eq.${firmId}&select=*`);
+      if (response.data && response.data.length > 0) {
+        return response.data[0];
+      }
+      return null;
+    } catch (error) {
+      console.error('❌ Error fetching firm:', error);
+      throw error;
+    }
+  },
+
   // Fetch all users
   async getUsers() {
     try {
@@ -1608,6 +1622,8 @@ export const fastAPI = {
   // Upload company logo to Supabase storage
   async uploadCompanyLogo(file: File, firmId: string): Promise<string> {
     try {
+      console.log('📤 Starting logo upload for firm:', firmId);
+      
       // Validate file type (images and PDF)
       const validTypes = [
         'image/jpeg',
@@ -1632,38 +1648,58 @@ export const fastAPI = {
       const fileExt = file.name.split('.').pop()?.toLowerCase();
       const fileName = `logo-${Date.now()}-${Math.random().toString(36).substr(2, 5)}.${fileExt}`;
       const filePath = `company-logos/${firmId}/${fileName}`;
-      const bucket = 'project-documents'; // Using existing bucket, or create a 'company-assets' bucket
+      const bucket = 'project-documents';
       
-      // Upload to Supabase storage
-      const { data, error } = await supabase.storage
-        .from(bucket)
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: true // Allow overwriting existing logo
-        });
+      console.log('📁 Uploading to:', filePath);
       
-      if (error) {
-        console.error('❌ Logo upload error:', error);
-        throw new Error(`Logo upload failed: ${error.message}`);
-      }
+      // Use direct fetch API with service role key (same pattern as working uploads)
+      const serviceRoleKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFtbWFvc21rZ3drYW1mamhjeGlrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjYyNzU4NywiZXhwIjoyMDcyMjAzNTg3fQ.PVg3nnfYEBnqpceBXJjnZJIc9lwjmW1G7Lo2U7t0ehk';
       
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from(bucket)
-        .getPublicUrl(filePath);
+      const formData = new FormData();
+      formData.append('file', file);
       
-      const logoUrl = urlData.publicUrl;
-      
-      // Update firm record with logo URL
-      await api.patch(`/firms?id=eq.${firmId}`, {
-        logo_url: logoUrl,
-        updated_at: new Date().toISOString()
+      // Create timeout promise
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('Logo upload timed out after 30 seconds. Please check your connection and try again.'));
+        }, 30000); // 30 second timeout
       });
       
+      // Upload using direct fetch API (same as EquipmentGrid and AddProjectForm)
+      const uploadPromise = fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${filePath}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${serviceRoleKey}`,
+          'apikey': serviceRoleKey
+        },
+        body: formData
+      });
+      
+      // Race between upload and timeout
+      const uploadResponse = await Promise.race([uploadPromise, timeoutPromise]);
+      
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        console.error('❌ Logo upload error:', uploadResponse.status, errorText);
+        throw new Error(`Logo upload failed: ${uploadResponse.status} ${errorText}`);
+      }
+      
+      console.log('✅ File uploaded successfully');
+      
+      // Get public URL (construct manually like other uploads)
+      const logoUrl = `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${filePath}`;
+      console.log('✅ Logo URL generated:', logoUrl);
+      
+      // Return the logo URL - let the caller update the firm record
+      // This avoids double updates and potential conflicts
       return logoUrl;
     } catch (error: any) {
       console.error('❌ Error uploading company logo:', error);
-      throw error;
+      // Re-throw with a more user-friendly message
+      if (error.message && error.message.includes('timeout')) {
+        throw error;
+      }
+      throw new Error(error.message || 'Failed to upload logo. Please try again.');
     }
   },
 
